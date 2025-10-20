@@ -1,3 +1,19 @@
+# Video files and media content
+video/
+video_test/
+video_shards/
+temp/
+
+# Media file types (in case they appear elsewhere)
+*.mp4
+*.mp3
+*.avi
+*.mkv
+*.wav
+
+# Shards data
+video_shards/shards.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
