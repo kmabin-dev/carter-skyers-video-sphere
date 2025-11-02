@@ -12,10 +12,12 @@ PROJECT_DIR = Path('/Users/kay/Documents/Advanced Python/Carter-skyers-video-sph
 # STUDENTS MAY WISH TO CHANGE (REDUCE) THE FOLLOWING PARAMETERS WHILE TESTING AND DEBUGGING THEIR CODE
 #
 # number of shards in the video
-NUM_SHARDS = 128
+# Reduced to 1 for local integration test (only one shard required for the example flow)
+NUM_SHARDS = 1
 
 # number of fan processes to spawn
-NUM_FANS = 16
+# Reduced for faster local test
+NUM_FANS = 4
 
 #
 # STUDENTS MAY WISH TO CHANGE THE LOGGING LEVEL WHILE TESTING AND DEBUGGING THEIR CODE

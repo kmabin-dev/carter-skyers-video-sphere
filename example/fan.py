@@ -33,10 +33,11 @@ class Fan(object):
         '''
         shard_id = random.randint(0, config.NUM_SHARDS - 1)
         padded = str(shard_id).zfill(4)
-        file_path = config.SHARDS_DIR + '/' + f'shard_{padded}.mp4'
+        # SHARDS_DIR may be a Path; construct path safely
+        file_path = config.SHARDS_DIR / f'shard_{padded}.mp4'
 
         try:
-            file = open(file_path, 'rb')
+            file = open(str(file_path), 'rb')
         except Exception as e:
             logger.error(
                 f'Unable to open {file_path} exception={type(e).__name__}')

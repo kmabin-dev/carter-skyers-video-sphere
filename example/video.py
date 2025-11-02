@@ -212,11 +212,12 @@ def play(file_path):
 
 
 def clean_temp_directory():
-
-    if os.path.exists(config.TEMP_DIR):
-        for temp_file in os.listdir(config.TEMP_DIR):
-            if isfile(join(config.TEMP_DIR, temp_file)):
-                os.remove(config.TEMP_DIR + '/' + temp_file)
+    # config.TEMP_DIR may be a Path object; normalize to string
+    temp_dir = str(config.TEMP_DIR)
+    if os.path.exists(temp_dir):
+        for temp_file in os.listdir(temp_dir):
+            if isfile(join(temp_dir, temp_file)):
+                os.remove(os.path.join(temp_dir, temp_file))
 
 
 def create_shard(input_file_path, output_file_path, start, end):
