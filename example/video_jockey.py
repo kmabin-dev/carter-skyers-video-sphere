@@ -39,37 +39,92 @@ class VideoJockey(object):
                 time.sleep(0.01)
                 continue
             idx, sender_name, file_path = item
-            logger.info('%s received shard from %s in slot %d -> %s', self.name(), sender_name, idx, file_path)
+            logger.info(
+                '%s received shard from %s in slot %d -> %s',
+                self.name(), sender_name, idx, file_path
+            )
             # append the file_path as the shard representation
             collected.append((sender_name, file_path))
 
         # indicate to all fans that the vj has all the shards
         try:
             shared_buffer.vj_has_all_shards.value = True
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning('Failed to set completion flag: %s', e)
 
         # store as flat list of file paths
         self.__shards = [p for (_, p) in collected]
         return True
 
-    def __write_video(self):
+    def __cleanup_temp_files(self):
         '''
-        For the integration test we compose a simple "collage" file listing
-        the shard file paths consumed. In a full implementation this would
-        call ffmpeg to tile/concat the videos.
+        Clean up temp files after they've been consumed for the video composition
         '''
         import os
+        cleaned = []
+        for temp_path in self.__shards:
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    cleaned.append(temp_path)
+            except OSError as e:
+                logger.warning('Failed to cleanup temp file %s: %s', temp_path, e)
+        logger.debug('Cleaned up %d temp files', len(cleaned))
+
+    def __write_video(self):
+        '''
+        Compose received video shards into a final video using ffmpeg.
+        Uses a 4x4 grid layout since we have multiple shards, treating each
+        as a tile in the mosaic.
+        '''
+        import os
+        import ffmpeg
+        
+        # Ensure temp dir exists for output
         out_dir = config.TEMP_DIR
+        os.makedirs(str(out_dir), exist_ok=True)
+
+        # First, create a list of input files
+        inputs = []
+        for shard_path in self.__shards:
+            try:
+                # Verify the file exists and is readable
+                if not os.path.exists(shard_path):
+                    logger.warning('Shard file missing: %s', shard_path)
+                    continue
+                # Add to input list
+                inputs.append(ffmpeg.input(shard_path))
+            except Exception as e:
+                logger.error('Error adding input %s: %s', shard_path, e)
+                continue
+
+        if not inputs:
+            logger.error('No valid input shards found')
+            return None
+
+        # Create output path
+        out_path = os.path.join(str(out_dir), 'final_collage.mp4')
+        
         try:
-            os.makedirs(out_dir, exist_ok=True)
-        except Exception:
-            pass
-        out_path = os.path.join(str(out_dir), 'final_collage.txt')
-        with open(out_path, 'w', encoding='utf-8') as fh:
-            for p in self.__shards:
-                fh.write(f'{p}\n')
-        return out_path
+            # Use simple concat for now since we know they're sequential parts
+            # In a full implementation, we'd use a grid layout with xstack filter
+            logger.info('Starting ffmpeg composition with %d inputs...', len(inputs))
+            (
+                ffmpeg
+                .concat(*inputs)
+                .output(out_path, loglevel='info')
+                .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+            )
+            logger.info('ffmpeg composition completed -> %s', out_path)
+            
+            # Clean up the temp files after successful composition
+            self.__cleanup_temp_files()
+            
+            return out_path
+            
+        except ffmpeg.Error as e:
+            logger.error('FFmpeg error composing video: %s', e)
+            return None
 
     def start(self, shared_buffer, total_shards=128):
         '''

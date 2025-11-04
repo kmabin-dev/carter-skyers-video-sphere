@@ -39,10 +39,16 @@ class Fan(object):
 
         try:
             file = open(str(file_path), 'rb')
-        except Exception as e:
+        except OSError as e:
             # If shards are not present, generate a small dummy payload
-            logger.debug('Unable to open %s exception=%s; using dummy shard', file_path, type(e).__name__)
-            return bytes(f'dummy-shard-{self.__id}-{random.randint(0,9999)}', 'utf-8')
+            logger.debug(
+                'Unable to open %s exception=%s; using dummy shard',
+                file_path, type(e).__name__
+            )
+            return bytes(
+                f'dummy-shard-{self.__id}-{random.randint(0,9999)}',
+                'utf-8'
+            )
         # read the data
         byte_data = file.read()
 
@@ -68,11 +74,8 @@ class Fan(object):
         try:
             # ensure temp dir exists
             tmp_dir = config.TEMP_DIR
-            try:
-                os.makedirs(tmp_dir, exist_ok=True)
-            except Exception:
-                # if tmp_dir is a Path-like, os.makedirs accepts it on Python 3.8+
-                pass
+            # Create temp dir; it handles Path objects in Python 3.8+
+            os.makedirs(tmp_dir, exist_ok=True)
 
             # write a temporary file then publish its path
             import tempfile
@@ -86,9 +89,15 @@ class Fan(object):
 
             # publish to shared buffer and release lock
             shared_buffer.write_slot(idx, self.__name, tmp_name)
-            logger.info('The fan %s sent shard to slot %d -> %s', self.name(), idx, tmp_name)
-        except Exception as e:
-            logger.error('fan %s failed to write shard: %s', self.name(), e)
+            logger.info(
+                'The fan %s sent shard to slot %d -> %s',
+                self.name(), idx, tmp_name
+            )
+        except (OSError, IOError) as e:
+            logger.error(
+                'fan %s failed to write shard: %s',
+                self.name(), e
+            )
 
     def start(self, shared_buffer):
         self.send_shard(shared_buffer)
