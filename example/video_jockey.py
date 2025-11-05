@@ -94,7 +94,7 @@ class VideoJockey(object):
                     continue
                 # Add to input list
                 inputs.append(ffmpeg.input(shard_path))
-            except Exception as e:
+            except (ffmpeg.Error, OSError) as e:
                 logger.error('Error adding input %s: %s', shard_path, e)
                 continue
 
@@ -109,18 +109,36 @@ class VideoJockey(object):
             # Use simple concat for now since we know they're sequential parts
             # In a full implementation, we'd use a grid layout with xstack filter
             logger.info('Starting ffmpeg composition with %d inputs...', len(inputs))
-            (
+            process = (
                 ffmpeg
                 .concat(*inputs)
                 .output(out_path, loglevel='info')
-                .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+                .overwrite_output()
+                .run_async(pipe_stdout=True, pipe_stderr=True)
             )
-            logger.info('ffmpeg composition completed -> %s', out_path)
             
-            # Clean up the temp files after successful composition
-            self.__cleanup_temp_files()
+            # Stream ffmpeg output in real-time
+            while True:
+                line = process.stderr.readline()
+                if not line:
+                    break
+                line = line.decode('utf-8', errors='replace').strip()
+                if line:
+                    logger.info('ffmpeg: %s', line)
+                    
+            # Get final output/error streams
+            _, stderr = process.communicate()
             
-            return out_path
+            if process.returncode == 0:
+                logger.info('ffmpeg composition completed -> %s', out_path)
+                # Clean up temp files only on success
+                self.__cleanup_temp_files()
+                return out_path
+            else:
+                stderr_text = stderr.decode('utf-8', errors='replace')
+                logger.error('ffmpeg failed with return code %d:\n%s', 
+                           process.returncode, stderr_text)
+                return None
             
         except ffmpeg.Error as e:
             logger.error('FFmpeg error composing video: %s', e)
