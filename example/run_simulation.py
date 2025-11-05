@@ -1,6 +1,8 @@
 import multiprocessing
 import time
 import logging
+import os
+import argparse
 
 from shared_buffer import SharedBuffer
 from fan import Fan
@@ -20,7 +22,7 @@ def dj_worker(shared_buf, total_shards):
     vj.start(shared_buf, total_shards)
 
 
-def run_simulation(num_fans=16, total_shards=128):
+def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
     logging.basicConfig(level=logging.INFO, format='[%(asctime)s:%(levelname)-8s] %(message)s')
     # ensure at least 8 fans log at INFO -- root logger is INFO so OK
 
@@ -44,14 +46,27 @@ def run_simulation(num_fans=16, total_shards=128):
     for p in producers:
         p.join()
 
-    # wait for dj to finish (with extended timeout for ffmpeg)
-    dj.join(timeout=120)
+    # wait for dj to finish (timeout can be specified via env var DJ_TIMEOUT or CLI)
+    if dj_timeout is None:
+        try:
+            dj_timeout = int(os.environ.get('DJ_TIMEOUT', '600'))
+        except ValueError:
+            dj_timeout = 600
+
+    dj.join(timeout=dj_timeout)
     if dj.is_alive():
-        print('DJ did not finish in time (120s), terminating')
+        print(f'DJ did not finish in time ({dj_timeout}s), terminating')
         dj.terminate()
     else:
         print('DJ finished')
 
 
 if __name__ == '__main__':
-    run_simulation()
+    parser = argparse.ArgumentParser(description='Run shard simulation')
+    parser.add_argument('--fans', type=int, default=16, help='Number of fan producers')
+    parser.add_argument('--shards', type=int, default=128, help='Total number of shards to send')
+    parser.add_argument('--dj-timeout', type=int, default=None, help='DJ timeout in seconds (overrides DJ_TIMEOUT env)')
+    args = parser.parse_args()
+
+    # allow environment DJ_TIMEOUT to override default if CLI arg not provided
+    run_simulation(num_fans=args.fans, total_shards=args.shards, dj_timeout=args.dj_timeout)
