@@ -1,4 +1,6 @@
+import os
 import config
+import subprocess
 from config import logger
 
 
@@ -60,7 +62,6 @@ class VideoJockey(object):
         '''
         Clean up temp files after they've been consumed for the video composition
         '''
-        import os
         cleaned = []
         for temp_path in self.__shards:
             try:
@@ -74,31 +75,21 @@ class VideoJockey(object):
     def __write_video(self):
         '''
         Compose received video shards into a final video using ffmpeg.
-        Uses a 4x4 grid layout since we have multiple shards, treating each
-        as a tile in the mosaic.
+        Uses concatenation to combine the video shards.
         '''
-        import os
-        import ffmpeg
-        
         # Ensure temp dir exists for output
         out_dir = config.TEMP_DIR
         os.makedirs(str(out_dir), exist_ok=True)
 
-        # First, create a list of input files
-        inputs = []
+        # First, verify all shards exist and are readable
+        valid_shards = []
         for shard_path in self.__shards:
-            try:
-                # Verify the file exists and is readable
-                if not os.path.exists(shard_path):
-                    logger.warning('Shard file missing: %s', shard_path)
-                    continue
-                # Add to input list
-                inputs.append(ffmpeg.input(shard_path))
-            except (ffmpeg.Error, OSError) as e:
-                logger.error('Error adding input %s: %s', shard_path, e)
-                continue
+            if os.path.exists(shard_path):
+                valid_shards.append(shard_path)
+            else:
+                logger.warning('Shard file missing: %s', shard_path)
 
-        if not inputs:
+        if not valid_shards:
             logger.error('No valid input shards found')
             return None
 
@@ -106,104 +97,61 @@ class VideoJockey(object):
         out_path = os.path.join(str(out_dir), 'final_collage.mp4')
         
         try:
-            logger.info('Starting ffmpeg composition with %d inputs...', len(inputs))
+            # Create a temporary file listing all the input files
+            list_path = os.path.join(out_dir, 'concat_list.txt')
+            with open(list_path, 'w', encoding='utf-8') as fh:
+                for p in valid_shards:
+                    # FFmpeg concat demuxer requires 'file' prefix and single quotes
+                    fh.write(f"file '{p.replace(chr(39), chr(39) + '\\' + chr(39))}'\n")
 
-            # Fast path: if all input files have identical codecs/params we can
-            # use the concat demuxer + stream copy which is much faster because
-            # it avoids re-encoding.
-            def probe_info(path):
-                try:
-                    return ffmpeg.probe(path)
-                except ffmpeg.Error as e:
-                    logger.debug('Probe failed for %s: %s', path, e)
-                    return None
+            # Build ffmpeg command
+            ffmpeg_cmd = [
+                'ffmpeg',
+                '-f', 'concat',        # Use concat demuxer
+                '-safe', '0',          # Allow absolute paths
+                '-i', list_path,       # Input list file
+                '-c', 'copy',          # Stream copy (no re-encode)
+                '-movflags', '+faststart',  # Web playback optimization
+                '-y',                  # Overwrite output
+                out_path              # Output path
+            ]
 
-            first_info = probe_info(self.__shards[0])
-            compatible = True
-            if first_info is None:
-                compatible = False
-            else:
-                # Extract some key fields to compare
-                def extract_stream_props(info):
-                    v = None
-                    a = None
-                    for s in info.get('streams', []):
-                        if s.get('codec_type') == 'video' and v is None:
-                            v = s
-                        if s.get('codec_type') == 'audio' and a is None:
-                            a = s
-                    return v, a
+            logger.info('Starting ffmpeg composition with command: %s', ' '.join(ffmpeg_cmd))
+            
+            # Run ffmpeg process
+            process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True  # Get string output instead of bytes
+            )
 
-                v0, a0 = extract_stream_props(first_info)
-                for p in self.__shards[1:]:
-                    info = probe_info(p)
-                    if info is None:
-                        compatible = False
-                        break
-                    v, a = extract_stream_props(info)
-                    # Basic compatibility checks
-                    if not v or not v0:
-                        compatible = False
-                        break
-                    if v.get('codec_name') != v0.get('codec_name') or v.get('width') != v0.get('width') or v.get('height') != v0.get('height'):
-                        compatible = False
-                        break
-                    # Check audio compatibility if present in either
-                    if (a0 and a) and (a.get('codec_name') != a0.get('codec_name') or a.get('sample_rate') != a0.get('sample_rate')):
-                        compatible = False
-                        break
-
-            if compatible:
-                # write a temporary concat list file
-                list_path = os.path.join(out_dir, 'concat_list.txt')
-                with open(list_path, 'w', encoding='utf-8') as fh:
-                    for p in self.__shards:
-                        # paths must be single-quoted per ffmpeg concat demuxer
-                        fh.write("file '%s'\n" % p.replace("'", "'\\''"))
-
-                logger.info('Using concat demuxer (stream copy) via list: %s', list_path)
-                process = (
-                    ffmpeg
-                    .input(list_path, format='concat', safe=0)
-                    .output(out_path, c='copy', movflags='+faststart')
-                    .overwrite_output()
-                    .run_async(pipe_stdout=True, pipe_stderr=True)
-                )
-            else:
-                # Fallback: re-encode but use a faster preset and lower work
-                logger.info('Inputs are not bitstream-compatible; falling back to re-encode (veryfast preset)')
-                process = (
-                    ffmpeg
-                    .concat(*inputs)
-                    .output(out_path, vcodec='libx264', preset='veryfast', crf=23, movflags='+faststart')
-                    .overwrite_output()
-                    .run_async(pipe_stdout=True, pipe_stderr=True)
-                )
-
-            # Stream ffmpeg output in real-time
-            while True:
-                line = process.stderr.readline()
-                if not line:
-                    break
-                line = line.decode('utf-8', errors='replace').strip()
+            # Stream output in real-time
+            for line in process.stderr:
+                line = line.strip()
                 if line:
                     logger.info('ffmpeg: %s', line)
 
-            # Get final output/error streams
-            _, stderr = process.communicate()
+            # Wait for completion
+            returncode = process.wait()
 
-            if process.returncode == 0:
+            if returncode == 0:
                 logger.info('ffmpeg composition completed -> %s', out_path)
                 # Clean up temp files only on success
                 self.__cleanup_temp_files()
+                # Also clean up the concat list
+                try:
+                    os.remove(list_path)
+                except OSError:
+                    pass
                 return out_path
             else:
-                stderr_text = stderr.decode('utf-8', errors='replace')
-                logger.error('ffmpeg failed with return code %d:\n%s', process.returncode, stderr_text)
+                stderr = process.stderr.read()
+                logger.error('ffmpeg failed with return code %d:\n%s', returncode, stderr)
                 return None
 
-        except ffmpeg.Error as e:
-            logger.error('FFmpeg error composing video: %s', e)
+        except Exception as e:
+            logger.error('Error composing video: %s', e)
             return None
 
     def start(self, shared_buffer, total_shards=128):
