@@ -1,12 +1,21 @@
 [run]
 branch = True
-source = example,tests
+source = example
 omit =
     */.venv/*
     */venv/*
     */site-packages/*
+    example/run_simulation.py
+    example/main_example.py
+    example/*_test.py
+    tests/*
 
 [report]
 show_missing = True
 skip_covered = False
-fail_under = 65
+fail_under = 80
+exclude_lines =
+    pragma: no cover
+    if __name__ == "__main__":
+    ^\s*raise NotImplementedError\b
+    ^\s*except (KeyboardInterrupt|SystemExit):

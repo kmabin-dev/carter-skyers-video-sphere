@@ -1,7 +1,8 @@
-"""YouTube helper utilities for downloading and normalizing video filenames.
+"""YouTube helper utilities for downloading and normalizing video
+filenames.
 
-Wraps pytubefix to fetch a video, pick a highest-resolution progressive stream,
-and download it with a sanitized disk-friendly file name.
+Wraps pytubefix to fetch a video, pick a highest-resolution progressive
+stream, and download it with a sanitized disk-friendly file name.
 """
 
 import pytubefix
@@ -12,23 +13,25 @@ def video_file_name(d_video):
     '''
     simplify video file name for writing to disk
     '''
-    video_file_name = d_video.default_filename
-    n = len(video_file_name)
+    fname = d_video.default_filename
+    n = len(fname)
     if n == 0:
         return ''
 
     # replace chars
-    video_file_name = video_file_name \
-        .replace(' ', '-') \
-        .replace('(', '') \
-        .replace(')', '') \
+    fname = (
+        fname
+        .replace(' ', '-')
+        .replace('(', '')
+        .replace(')', '')
         .lower()
+    )
     # remove duplicate '-' chars
-    s = video_file_name[0]
-    for i in range(1, len(video_file_name)):
+    s = fname[0]
+    for i in range(1, len(fname)):
         # if not a dup -, append to s
-        if video_file_name[i-1] != '-' or video_file_name[i] != '-':
-            s += video_file_name[i]
+        if fname[i-1] != '-' or fname[i] != '-':
+            s += fname[i]
 
     return s
 
@@ -36,13 +39,16 @@ def video_file_name(d_video):
 def download(url):
 
     # download video
-    logger.info(f'downloading video for {url}')
+    logger.info('downloading video for %s', url)
     try:
         yt = pytubefix.YouTube(url)
     except Exception as e:
         logger.warning(
-            f'WARNING: Exception raised while getting video for {url} exception={type(e).__name__}')
-        raise e
+            'WARNING: Exception raised while getting video for %s exception=%s',
+            url,
+            type(e).__name__,
+        )
+        raise
 
     return yt
 
@@ -64,5 +70,8 @@ def write_video(d_video, video_dir, file_name):
         d_video.download(output_path=video_dir, filename=file_name)
     except Exception as e:
         logger.warning(
-            f'WARNING: Unable to write video for {video_dir} exception={type(e).__name__}')
-        raise e
+            'WARNING: Unable to write video for %s exception=%s',
+            video_dir,
+            type(e).__name__,
+        )
+        raise
