@@ -1,9 +1,19 @@
-import random
+"""Fan producer: reads or generates a shard, writes to a temp file and enqueues its path.
+
+Key behaviors:
+    - Optionally uses a provided shard path (for tests) or picks a random shard id.
+    - Writes shard bytes to a temp file under `config.TEMP_DIR`.
+    - Retries enqueueing with backpressure logging.
+    - Registers failed temp files for cleanup worker if enqueueing ultimately fails.
+"""
+
 import os
+import random
+
+from faker import Faker
 
 import config
 from config import logger
-from faker import Faker
 
 FAKE = Faker()
 

@@ -1,6 +1,16 @@
+"""VideoJockey: collects shard temp files from the shared buffer and composes the final video.
+
+Workflow:
+    1. Poll the shared buffer until the expected number of shards are collected.
+    2. Write a concat list file and run ffmpeg to stitch shards and add audio.
+    3. Clean up temp shard files and the concat list on success.
+    4. Optionally auto-play the final video (macOS) if configured.
+"""
+
 import os
-import config
 import subprocess
+
+import config
 from config import logger
 
 

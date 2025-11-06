@@ -1,15 +1,24 @@
+"""Simulation orchestrator: spawns fan producers, a cleanup worker, and the video jockey.
+
+Primary responsibilities:
+    - Randomly select shard files from `config.SHARDS_DIR`.
+    - Spawn one process per selected shard to publish temps into the shared buffer.
+    - Spawn the VideoJockey process to compose the final video.
+    - Run a background cleanup process for failed temp files.
+"""
+
 import multiprocessing
 import logging
 import os
 import argparse
 import random
 import sys
+import time
 
 import config
 from shared_buffer import SharedBuffer
 from fan import Fan
 from video_jockey import VideoJockey
-import time
 
 
 def cleanup_worker(shared_buf, stop_event, interval=30):
@@ -17,7 +26,6 @@ def cleanup_worker(shared_buf, stop_event, interval=30):
 
     Implemented at module level so it can be spawned by multiprocessing.
     """
-    import os, logging
     logger = logging.getLogger('cleanup')
     while not stop_event.is_set():
         try:

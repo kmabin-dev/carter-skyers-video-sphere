@@ -1,7 +1,13 @@
+"""Video shard representation and validation.
+
+Computes and verifies the file hash, and provides simple accessors and
+JSON-style stringification for debugging.
+"""
+
 import json
 
-import video
 from config import logger
+import video
 
 
 class Shard(object):

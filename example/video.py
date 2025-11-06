@@ -1,3 +1,9 @@
+"""Core media utilities: probing, concatenation, audio muxing, trimming, and playback.
+
+Implements subprocess-based ffmpeg/ffprobe helpers plus small utilities for
+temp-file paths, hashing, and VLC-based playback (when not under tests).
+"""
+
 import hashlib
 import os
 import platform
@@ -7,8 +13,9 @@ import json
 import subprocess
 from os.path import isfile, join
 
-import config
 import vlc
+
+import config
 from config import logger
 
 

@@ -1,3 +1,9 @@
+"""Global configuration for the video shard composition project.
+
+Centralizes directory paths, tuning parameters (shard counts, buffer sizes),
+audio composition settings, and logging setup.
+"""
+
 import logging
 from pathlib import Path
 

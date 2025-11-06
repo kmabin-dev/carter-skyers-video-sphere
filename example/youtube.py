@@ -1,3 +1,9 @@
+"""YouTube helper utilities for downloading and normalizing video filenames.
+
+Wraps pytubefix to fetch a video, pick a highest-resolution progressive stream,
+and download it with a sanitized disk-friendly file name.
+"""
+
 import pytubefix
 from config import logger
 

@@ -1,10 +1,16 @@
+"""Legacy example orchestration script (kept for reference).
+
+Spawns multiple fans and a single VideoJockey using the older direct API.
+Prefer using `run_simulation.py` for the current workflow.
+"""
+
 import multiprocessing
 
 import config
 import fan
 import shared_buffer as sb
-import video
 import video_jockey
+import video
 
 
 def main():
