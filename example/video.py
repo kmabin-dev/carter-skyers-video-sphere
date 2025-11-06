@@ -42,7 +42,7 @@ def position_changed_cb(event, player):
 
 
 def write_audio(_audio_file_path, _input_file):
-    """Deprecated helper (previously ffmpeg-python). No-op retained for compatibility."""
+    """Deprecated: retained for compatibility (no-op)."""
     return
 
 
@@ -84,7 +84,7 @@ def dimensions(video_file_path):
 
 
 def probe(video_file_path):
-    """Return the first video stream info using ffprobe (JSON)."""
+    """Return first video stream info via ffprobe JSON output."""
     cmd = [
         'ffprobe',
         '-v', 'error',
@@ -112,8 +112,6 @@ def temp_file_path(name, ext):
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
     digest = shake256_hash(name + str(time.time_ns()))
-    temp_file_name = 'temp_' + name + '_' + hash + ext
-    # fix variable name if used later
     temp_file_name = 'temp_' + name + '_' + digest + ext
     return os.path.join(temp_dir, temp_file_name)
 
@@ -128,7 +126,6 @@ def audio(name, input_video_file_path, input_audio_file_path):
     print(f'\tname             : {name}')
     print('\tstatus           : processing...', end='')
     output_file = temp_file_path(name, '.mp4')
-    # Use ffmpeg CLI to mux video + audio. Copy video, encode audio to AAC, and shorten to the shortest stream.
     cmd = [
         'ffmpeg', '-y',
         '-i', str(input_video_file_path),
@@ -160,31 +157,30 @@ def concat(name, *input_video_file_paths):
         return None
     print('Applying concat...')
     print(f'\tinput       : {n} videos')
-    list_file_path = None
     for i in range(n):
         input_video_file_path = input_video_file_paths[i]
         if not os.path.exists(str(input_video_file_path)):
-            logger.error('Unable to access the file %s', input_video_file_path)
-            return None
+            # Warn but continue; ffmpeg will fail if inputs are truly missing
+            logger.warning('Input file not found (continuing): %s', input_video_file_path)
     print(f'\tname        : {name}')
     print('\tstatus      : processing...', end='')
     output_file = temp_file_path(name, '.mp4')
-    # Build a concat list file for the demuxer
+    # Build a concat list file for demuxer
     temp_dir = str(config.TEMP_DIR)
-    list_file_path = os.path.join(temp_dir, f'concat_{shake256_hash(name)}.txt')
-    with open(list_file_path, 'w', encoding='utf-8') as fh:
+    list_path = os.path.join(temp_dir, f'concat_{shake256_hash(name)}.txt')
+    with open(list_path, 'w', encoding='utf-8') as fh:
         for p in input_video_file_paths:
-            fh.write(f"file '{str(p).replace("'", "'\\''")}'\n")
-    # Use ffmpeg concat demuxer with stream copy
+            p_str = str(p)
+            fh.write(f"file '{p_str.replace("'", "'\\''")}'\n")
     cmd = [
         'ffmpeg', '-y',
-        '-f', 'concat', '-safe', '0', '-i', list_file_path,
+        '-f', 'concat', '-safe', '0', '-i', list_path,
         '-c', 'copy',
         output_file,
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     try:
-        os.remove(list_file_path)
+        os.remove(list_path)
     except OSError:
         pass
     if proc.returncode != 0:
@@ -229,8 +225,9 @@ def play(file_path):
         while not params['finish']:
             time.sleep(0.5)
 
-        # getting the duration of the video
+    # getting the duration of the video
     duration_ms = player.get_length()
+
     # printing the duration of the video
     logger.info('Duration : %s', ms_to_timecode(duration_ms))
 
@@ -250,7 +247,7 @@ def create_shard(input_file_path, output_file_path, start, end):
     if dir_name and not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
 
-    # trim using stream copy; start/end in seconds
+    # trim with copy
     start_s = float(start)
     end_s = float(end)
     duration = max(0.0, end_s - start_s)

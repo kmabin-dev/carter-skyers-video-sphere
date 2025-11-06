@@ -10,6 +10,7 @@ API:
 """
 
 import config
+from queue import Empty
 
 
 class SharedBuffer(object):
@@ -34,7 +35,7 @@ class SharedBuffer(object):
         try:
             self._queue.put((sender_name, file_path), timeout=timeout)
             return True
-        except Exception:
+        except Exception:  # broad catch retained; manager.Queue raises non-Empty exceptions on full
             return False
 
     def get_shard(self, timeout=0.1):
@@ -45,6 +46,8 @@ class SharedBuffer(object):
         try:
             item = self._queue.get(timeout=timeout)
             return item
+        except Empty:
+            return None
         except Exception:
             return None
 
@@ -52,6 +55,7 @@ class SharedBuffer(object):
         try:
             return self._queue.qsize()
         except Exception:
+            # fallback manual count (may block, so avoid heavy use)
             return 0
 
     def register_failed_temp(self, temp_path):
@@ -59,10 +63,10 @@ class SharedBuffer(object):
         enqueued. The cleanup worker will later attempt to remove these.
         """
         try:
-            # Avoid duplicates
             if temp_path not in self.failed_temp_paths:
                 self.failed_temp_paths.append(temp_path)
         except Exception:
+            # ignore manager errors
             pass
 
     def get_and_clear_failed_temps(self):

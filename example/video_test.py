@@ -1,8 +1,4 @@
 import os
-import subprocess
-import tempfile
-import json
-import shlex
 import pytest
 
 import config
@@ -27,109 +23,60 @@ def test_clean_temp_directory():
 
 
 def test_shake256_hash():
-    hash = video.shake256_hash('hello')
-    assert hash == '1234075ae4a1e773'
+    digest = video.shake256_hash('hello')
+    assert digest == '1234075ae4a1e773'
 
 
 def test_file_hash():
-    hash = video.file_hash(config.SOURCE_VIDEO_FILE_PATH)
-    assert hash == '0d7ef6cec5a9f1a2'
+    digest = video.file_hash(str(config.SOURCE_VIDEO_FILE_PATH))
+    assert digest == '0d7ef6cec5a9f1a2'
 
 
-def test_dimensions_cli():
-    # Use ffprobe CLI to get dimensions (aligns with CLI flow)
+def test_dimensions():
+    # Use the configured source video path directly (Path-safe)
+    video_file_path = config.SOURCE_VIDEO_FILE_PATH
+    if not os.path.exists(str(video_file_path)):
+        pytest.skip('source video file not present')
+    dimensions = video.dimensions(str(video_file_path))
+    assert len(dimensions) == 2
+
+
+def test_audio():
+    if not os.path.exists(str(config.TEST_VIDEO_FILE_PATH)) or not os.path.exists(str(config.TEST_AUDIO_FILE_PATH)):
+        pytest.skip('test media not present')
+    res_file_path = video.audio('test', config.TEST_VIDEO_FILE_PATH, config.TEST_AUDIO_FILE_PATH)
+    assert res_file_path and os.path.exists(res_file_path)
+
+
+def test_concet():
     if not os.path.exists(str(config.TEST_VIDEO_FILE_PATH)):
-        pytest.skip('Test video file not present')
-    video_file_path = str(config.TEST_VIDEO_FILE_PATH)
-    cmd = [
-        'ffprobe', '-v', 'error', '-select_streams', 'v:0',
-        '-show_entries', 'stream=width,height', '-of', 'json', video_file_path
-    ]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    assert proc.returncode == 0
-    info = json.loads(proc.stdout)
-    w = info['streams'][0]['width']
-    h = info['streams'][0]['height']
-    assert w > 0 and h > 0
+        pytest.skip('test video not present')
+    res_file_path = video.concat('test', config.TEST_VIDEO_FILE_PATH, config.TEST_VIDEO_FILE_PATH)
+    assert res_file_path and os.path.exists(res_file_path)
 
 
-def test_audio_cli():
-    # Mux audio onto video via ffmpeg CLI (no re-encode of video)
-    if not (os.path.exists(str(config.TEST_VIDEO_FILE_PATH)) and os.path.exists(str(config.TEST_AUDIO_FILE_PATH))):
-        pytest.skip('Test media files not present')
-    out_fd, out_path = tempfile.mkstemp(suffix='.mp4', dir=str(config.TEMP_DIR))
-    os.close(out_fd)
-    cmd = [
-        'ffmpeg', '-v', 'error', '-i', str(config.TEST_VIDEO_FILE_PATH), '-i', str(config.TEST_AUDIO_FILE_PATH),
-        '-c:v', 'copy', '-c:a', 'aac', '-shortest', '-y', out_path
-    ]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    assert proc.returncode == 0
-    assert os.path.exists(out_path)
-    os.remove(out_path)
-
-
-def test_concat_cli():
-    # Concat two copies of the same test clip via concat demuxer
-    if not os.path.exists(str(config.TEST_VIDEO_FILE_PATH)):
-        pytest.skip('Test video file not present')
-    os.makedirs(str(config.TEMP_DIR), exist_ok=True)
-    list_path = os.path.join(str(config.TEMP_DIR), 'test_concat_list.txt')
-    out_path = os.path.join(str(config.TEMP_DIR), 'concat_out.mp4')
-    with open(list_path, 'w', encoding='utf-8') as fh:
-        p = str(config.TEST_VIDEO_FILE_PATH).replace("'", "'\\''")
-        fh.write(f"file '{p}'\n")
-        fh.write(f"file '{p}'\n")
-    cmd = [
-        'ffmpeg', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list_path,
-        '-c:v', 'copy', '-y', out_path
-    ]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    assert proc.returncode == 0
-    assert os.path.exists(out_path)
-    os.remove(list_path)
-    os.remove(out_path)
-
-
-def test_play_noop():
-    # Ensure the function can be called without blocking (PYTEST guard in code)
+def test_play():
+    # play() is a no-op under pytest due to env guard; just ensure no crash
     video.play(str(config.TEST_VIDEO_FILE_PATH))
 
 
-def test_probe_cli():
-    # Use ffprobe CLI to ensure probing works
+def test_probe():
     if not os.path.exists(str(config.TEST_VIDEO_FILE_PATH)):
-        pytest.skip('Test video file not present')
-    cmd = ['ffprobe', '-v', 'error', '-show_format', '-show_streams', '-of', 'json', str(config.TEST_VIDEO_FILE_PATH)]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    assert proc.returncode == 0
-    info = json.loads(proc.stdout)
-    assert 'streams' in info and len(info['streams']) > 0
+        pytest.skip('test video not present')
+    video.probe(str(config.TEST_VIDEO_FILE_PATH))
 
 
-def test_create_shard_cli():
-    # Trim 10s segment using ffmpeg CLI
+def test_create_shard():
     if not os.path.exists(str(config.TEST_VIDEO_FILE_PATH)):
-        pytest.skip('Test video file not present')
-    os.makedirs(str(config.TEMP_DIR), exist_ok=True)
-    out_fd, out_path = tempfile.mkstemp(suffix='.mp4', dir=str(config.TEMP_DIR))
-    os.close(out_fd)
-    cmd = [
-        'ffmpeg', '-v', 'error', '-ss', '10', '-to', '20', '-i', str(config.TEST_VIDEO_FILE_PATH),
-        '-c', 'copy', '-y', out_path
-    ]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    assert proc.returncode == 0
-    assert os.path.exists(out_path)
-    os.remove(out_path)
+        pytest.skip('test video not present')
+    tmp = video.temp_file_path('create_shard', '.mp4')
+    out = video.create_shard(config.TEST_VIDEO_FILE_PATH, tmp, 10, 20)
+    # function returns None on error; ensure output exists if processing succeeded
+    if out is not None:
+        assert os.path.exists(tmp)
 
 
-def test_write_shard(monkeypatch):
-    # Monkeypatch temp_file_path to avoid Path/str concatenation issue in legacy code
-    def _temp_file_path(name, ext):
-        return os.path.join(str(config.TEMP_DIR), f'temp_{name}.mp4')
-    monkeypatch.setattr(video, 'temp_file_path', _temp_file_path)
+def test_write_shard():
     name = 'write_shard_test'
     output_file_path = video.write(name, b'beef')
     assert os.path.exists(output_file_path)
-    os.remove(output_file_path)

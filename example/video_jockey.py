@@ -1,6 +1,7 @@
 import os
 import config
 import subprocess
+from queue import Empty
 from config import logger
 
 
@@ -45,6 +46,7 @@ class VideoJockey(object):
             collected.append((sender_name, file_path))
 
         # indicate to all fans that the vj has all the shards
+        # Set completion flag (Value proxy may raise OSError if manager died)
         try:
             shared_buffer.vj_has_all_shards.value = True
         except OSError as e:
@@ -60,6 +62,8 @@ class VideoJockey(object):
         '''
         cleaned = []
         for temp_path in self.__shards:
+            if not temp_path:
+                continue
             try:
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
@@ -92,70 +96,57 @@ class VideoJockey(object):
         # Create output path
         out_path = os.path.join(str(out_dir), 'final_collage.mp4')
         
+        # Create concat list file
+        list_path = os.path.join(out_dir, 'concat_list.txt')
         try:
-            # Create a temporary file listing all the input files
-            list_path = os.path.join(out_dir, 'concat_list.txt')
             with open(list_path, 'w', encoding='utf-8') as fh:
                 for p in valid_shards:
-                    # FFmpeg concat demuxer requires 'file' prefix and single quotes
-                    fh.write(f"file '{p.replace(chr(39), chr(39) + '\\' + chr(39))}'\n")
-
-            # Build ffmpeg command with audio input (configurable via config.py)
-            ffmpeg_cmd = [
-                'ffmpeg',
-                '-f', 'concat',        # Use concat demuxer
-                '-safe', '0',          # Allow absolute paths
-                '-i', list_path,       # Input list file (video shards)
-                '-ss', str(getattr(config, 'AUDIO_OFFSET_SECONDS', 78)),  # Start audio at configured offset
-                '-i', str(config.SOURCE_AUDIO_FILE_PATH),  # Input audio file
-                '-c:v', 'copy',        # Stream copy video (no re-encode)
-                '-c:a', 'aac',         # Encode audio as AAC
-                '-b:a', str(getattr(config, 'AUDIO_BITRATE', '192k')),  # Audio bitrate
-                # Apply fade-in and fade-out using areverse trick to avoid needing total duration
-                '-af', f"afade=t=in:d={getattr(config, 'AUDIO_FADE_IN_SECONDS', 0.2)},areverse,afade=t=in:d={getattr(config, 'AUDIO_FADE_OUT_SECONDS', 1.2)},areverse",
-                '-shortest',           # Match shortest stream length
-                '-movflags', '+faststart',  # Web playback optimization
-                '-y',                  # Overwrite output
-                out_path              # Output path
-            ]
-
-            logger.info('Starting ffmpeg composition with command: %s', ' '.join(ffmpeg_cmd))
-            
-            # Run ffmpeg process
-            process = subprocess.Popen(
-                ffmpeg_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True  # Get string output instead of bytes
-            )
-
-            # Stream output in real-time
-            for line in process.stderr:
-                line = line.strip()
-                if line:
-                    logger.info('ffmpeg: %s', line)
-
-            # Wait for completion
-            returncode = process.wait()
-
-            if returncode == 0:
-                logger.info('ffmpeg composition completed -> %s', out_path)
-                # Clean up temp files only on success
-                self.__cleanup_temp_files()
-                # Also clean up the concat list
-                try:
-                    os.remove(list_path)
-                except OSError:
-                    pass
-                return out_path
-            else:
-                stderr = process.stderr.read()
-                logger.error('ffmpeg failed with return code %d:\n%s', returncode, stderr)
-                return None
-
-        except Exception as e:
-            logger.error('Error composing video: %s', e)
+                    safe_p = str(p).replace("'", "'\\''")
+                    fh.write(f"file '{safe_p}'\n")
+        except OSError as e:
+            logger.error('Failed to open concat list for writing: %s', e)
             return None
+
+        # Build ffmpeg command with audio input (configurable via config.py)
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-f', 'concat', '-safe', '0', '-i', list_path,
+            '-ss', str(getattr(config, 'AUDIO_OFFSET_SECONDS', 78)),
+            '-i', str(config.SOURCE_AUDIO_FILE_PATH),
+            '-c:v', 'copy', '-c:a', 'aac',
+            '-b:a', str(getattr(config, 'AUDIO_BITRATE', '192k')),
+            '-af', f"afade=t=in:d={getattr(config, 'AUDIO_FADE_IN_SECONDS', 0.2)},areverse,afade=t=in:d={getattr(config, 'AUDIO_FADE_OUT_SECONDS', 1.2)},areverse",
+            '-shortest', '-movflags', '+faststart', '-y', out_path
+        ]
+        logger.info('Starting ffmpeg composition with command: %s', ' '.join(ffmpeg_cmd))
+
+        process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        # Stream stderr
+        for line in process.stderr:
+            line = line.strip()
+            if line:
+                logger.info('ffmpeg: %s', line)
+        returncode = process.wait()
+        if returncode == 0:
+            logger.info('ffmpeg composition completed -> %s', out_path)
+            self.__cleanup_temp_files()
+            try:
+                os.remove(list_path)
+            except OSError:
+                pass
+            return out_path
+        stderr_tail = ''
+        try:
+            stderr_tail = process.stderr.read()
+        except Exception:
+            pass
+        logger.error('ffmpeg failed with return code %d: %s', returncode, stderr_tail)
+        return None
 
     def start(self, shared_buffer, total_shards=128):
         '''
@@ -169,8 +160,8 @@ class VideoJockey(object):
             video_file_path = self.__write_video()
             logger.info('%s writing done -> %s', self.__name, video_file_path)
             # Auto-play the final video on macOS (configurable)
-            try:
-                if getattr(config, 'AUTO_PLAY_FINAL_VIDEO', True) and video_file_path and os.path.exists(video_file_path):
+            if getattr(config, 'AUTO_PLAY_FINAL_VIDEO', True) and video_file_path and os.path.exists(video_file_path):
+                try:
                     subprocess.Popen(['open', video_file_path])
-            except Exception as e:
-                logger.warning('Auto-play failed: %s', e)
+                except OSError as e:
+                    logger.warning('Auto-play failed: %s', e)

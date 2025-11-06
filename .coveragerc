@@ -1,0 +1,12 @@
+[run]
+branch = True
+source = example,tests
+omit =
+    */.venv/*
+    */venv/*
+    */site-packages/*
+
+[report]
+show_missing = True
+skip_covered = False
+fail_under = 65
