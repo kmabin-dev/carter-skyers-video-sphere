@@ -100,16 +100,19 @@ class VideoJockey(object):
                     # FFmpeg concat demuxer requires 'file' prefix and single quotes
                     fh.write(f"file '{p.replace(chr(39), chr(39) + '\\' + chr(39))}'\n")
 
-            # Build ffmpeg command with audio input
+            # Build ffmpeg command with audio input (configurable via config.py)
             ffmpeg_cmd = [
                 'ffmpeg',
                 '-f', 'concat',        # Use concat demuxer
                 '-safe', '0',          # Allow absolute paths
                 '-i', list_path,       # Input list file (video shards)
+                '-ss', str(getattr(config, 'AUDIO_OFFSET_SECONDS', 78)),  # Start audio at configured offset
                 '-i', str(config.SOURCE_AUDIO_FILE_PATH),  # Input audio file
                 '-c:v', 'copy',        # Stream copy video (no re-encode)
                 '-c:a', 'aac',         # Encode audio as AAC
-                '-b:a', '192k',        # Audio bitrate
+                '-b:a', str(getattr(config, 'AUDIO_BITRATE', '192k')),  # Audio bitrate
+                # Apply fade-in and fade-out using areverse trick to avoid needing total duration
+                '-af', f"afade=t=in:d={getattr(config, 'AUDIO_FADE_IN_SECONDS', 0.2)},areverse,afade=t=in:d={getattr(config, 'AUDIO_FADE_OUT_SECONDS', 1.2)},areverse",
                 '-shortest',           # Match shortest stream length
                 '-movflags', '+faststart',  # Web playback optimization
                 '-y',                  # Overwrite output
@@ -165,3 +168,9 @@ class VideoJockey(object):
             logger.info('%s writing the video', self.__name)
             video_file_path = self.__write_video()
             logger.info('%s writing done -> %s', self.__name, video_file_path)
+            # Auto-play the final video on macOS (configurable)
+            try:
+                if getattr(config, 'AUTO_PLAY_FINAL_VIDEO', True) and video_file_path and os.path.exists(video_file_path):
+                    subprocess.Popen(['open', video_file_path])
+            except Exception as e:
+                logger.warning('Auto-play failed: %s', e)

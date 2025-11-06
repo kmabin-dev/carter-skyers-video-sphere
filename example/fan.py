@@ -109,7 +109,7 @@ class Fan(object):
                 attempt += 1
 
             if put_ok:
-                logger.info('The fan %s sent shard -> %s', self.name(), tmp_name)
+                logger.info('The fan %s sent shard -> shared buffer', self.name())
             else:
                 logger.error('fan %s failed to enqueue shard after %d attempts; registering shard for later cleanup %s', self.name(), max_attempts, tmp_name)
                 # Register the temp file with the shared buffer failed-temp list

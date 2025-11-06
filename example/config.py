@@ -70,3 +70,17 @@ SOURCE_AUDIO_FILE_PATH_STR = str(SOURCE_AUDIO_FILE_PATH)
 SHARDS_JSON_FILE_PATH_STR = str(SHARDS_JSON_FILE_PATH)
 TEST_VIDEO_FILE_PATH_STR = str(TEST_VIDEO_FILE_PATH)
 TEST_AUDIO_FILE_PATH_STR = str(TEST_AUDIO_FILE_PATH)
+
+# -------------------------
+# Audio/Playback settings
+# -------------------------
+# Start the audio track at this offset (in seconds) when composing the final video
+AUDIO_OFFSET_SECONDS = 78
+# Audio fade-in duration in seconds
+AUDIO_FADE_IN_SECONDS = 1.0
+# Audio fade-out duration in seconds (applied using areverse trick)
+AUDIO_FADE_OUT_SECONDS = 2.3
+# Audio bitrate for AAC encoding
+AUDIO_BITRATE = '192k'
+# Auto-play the final video on macOS after composition completes
+AUTO_PLAY_FINAL_VIDEO = True
