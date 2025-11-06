@@ -3,6 +3,7 @@ import logging
 import os
 import argparse
 import random
+import sys
 
 import config
 from shared_buffer import SharedBuffer
@@ -34,28 +35,26 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
 
     # We will read a fixed number of shards in parallel (num_fans). Pick
     # up to `num_fans` random shard files from the shards directory.
-    try:
-        shards_dir = config.SHARDS_DIR
-        # list candidate shard files (shard_0000.mp4 ...)
-        candidates = []
-        if os.path.isdir(str(shards_dir)):
-            for fn in os.listdir(str(shards_dir)):
-                if fn.startswith('shard_') and fn.endswith('.mp4'):
-                    candidates.append(os.path.join(str(shards_dir), fn))
-        # If we found fewer candidates on disk than the number of fans we need,
-        # generate the expected shard file names from the total_shards range
-        if len(candidates) < num_fans:
-            candidates = []
-            for i in range(total_shards):
-                padded = str(i).zfill(4)
-                candidates.append(str(shards_dir / f'shard_{padded}.mp4'))
+    # Only select from existing shard files on disk. If there are fewer than
+    # the requested `num_fans` shard files, abort with an error so the caller
+    # can populate the shard directory correctly.
+    shards_dir = config.SHARDS_DIR
+    candidates = []
+    if os.path.isdir(str(shards_dir)):
+        for fn in sorted(os.listdir(str(shards_dir))):
+            if fn.startswith('shard_') and fn.endswith('.mp4'):
+                candidates.append(os.path.join(str(shards_dir), fn))
 
-        # choose exactly num_fans unique random shards (or fewer if not enough exist)
-        shard_paths = random.sample(candidates, k=min(num_fans, len(candidates)))
-    except Exception as e:
-        logging.getLogger(__name__).warning('Failed to enumerate shard files: %s; falling back to random-per-fan', e)
-        # fallback: let each fan pick a random shard internally
-        shard_paths = [None] * num_fans
+    if len(candidates) < num_fans:
+        logging.getLogger(__name__).error(
+            'Not enough shard files present in %s: found %d, need %d.\n'
+            'Run the shard generator or place the shard files under that directory and try again.',
+            shards_dir, len(candidates), num_fans
+        )
+        sys.exit(1)
+
+    # choose exactly num_fans unique random shards from the existing files
+    shard_paths = random.sample(candidates, k=num_fans)
 
     # start DJ - expect as many shards as we selected (len(shard_paths))
     expected_shards = len(shard_paths)
