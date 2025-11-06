@@ -41,12 +41,12 @@ def cleanup_worker(shared_buf, stop_event, interval=30):
 
 
 
-def producer_worker(fan_id, shared_buf, shard_path):
+def producer_worker(fan_id, shared_buf, shard_path, verbose):
     """
     Producer worker that reads a single shard from disk (shard_path) and
     writes it to the shared buffer.
     """
-    f = Fan(fan_id, shard_path=shard_path)
+    f = Fan(fan_id, shard_path=shard_path, verbose=verbose)
     # single send per fan (we spawn exactly as many fans as selected shards)
     f.send_shard(shared_buf)
 
@@ -100,8 +100,11 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
 
     # start producers (one per selected shard)
     producers = []
+    # Only allow INFO logs from a limited number of fans to reduce noise
+    verbose_count = min(8, len(shard_paths))
     for i in range(len(shard_paths)):
-        p = multiprocessing.Process(target=producer_worker, args=(i, shared_buf, shard_paths[i]))
+        verbose = i < verbose_count
+        p = multiprocessing.Process(target=producer_worker, args=(i, shared_buf, shard_paths[i], verbose))
         p.start()
         producers.append(p)
 

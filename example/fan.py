@@ -13,13 +13,15 @@ class Fan(object):
     fan class
     '''
 
-    def __init__(self, id, shard_path=None):
+    def __init__(self, id, shard_path=None, verbose=True):
         self.__id = id
         self.__name = FAKE.name()
         # optional shard_path; if provided, read_random_shard will use it
         self.__shard_path = shard_path
         # keep a small buffer attribute for tests that expect it
         self.__buffer = b''
+        # control whether this fan emits INFO logs (else, downgrade to DEBUG)
+        self.__verbose = verbose
 
     def id(self):
         return self.__id
@@ -86,7 +88,10 @@ class Fan(object):
             # remove our temp file to avoid unnecessary work.
             try:
                 if getattr(shared_buffer, 'vj_has_all_shards', None) is not None and shared_buffer.vj_has_all_shards.value:
-                    logger.info('fan %s detected DJ has capacity/full; removing temp and exiting -> %s', self.name(), tmp_name)
+                    if self.__verbose:
+                        logger.info('fan %s detected DJ has capacity/full; removing temp and exiting -> %s', self.name(), tmp_name)
+                    else:
+                        logger.debug('fan %s detected DJ has capacity/full; removing temp and exiting -> %s', self.name(), tmp_name)
                     try:
                         os.remove(tmp_name)
                     except Exception:
@@ -109,7 +114,10 @@ class Fan(object):
                 attempt += 1
 
             if put_ok:
-                logger.info('The fan %s sent shard -> shared buffer', self.name())
+                if self.__verbose:
+                    logger.info('The fan %s sent shard -> shared buffer', self.name())
+                else:
+                    logger.debug('The fan %s sent shard -> shared buffer', self.name())
             else:
                 logger.error('fan %s failed to enqueue shard after %d attempts; registering shard for later cleanup %s', self.name(), max_attempts, tmp_name)
                 # Register the temp file with the shared buffer failed-temp list
