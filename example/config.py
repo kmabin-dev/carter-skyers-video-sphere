@@ -38,7 +38,10 @@ SHARED_BUFFER_SIZE = 4
 TEMP_DIR = PROJECT_DIR / 'temp'
 
 # url
-URL = 'https://www.youtube.com/watch?v=WU4UxWaf8U8&list=PLIx-eqjsmIuCoHbep0iithAFB6U793VVA'
+URL = (
+	'https://www.youtube.com/watch?v=WU4UxWaf8U8'
+	'&list=PLIx-eqjsmIuCoHbep0iithAFB6U793VVA'
+)
 
 # source hires files
 SOURCE_VIDEO_BASENAME = 'carter-skyers-easiest-goodbye-official-music-video'

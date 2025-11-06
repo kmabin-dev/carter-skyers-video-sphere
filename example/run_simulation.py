@@ -59,6 +59,9 @@ def dj_worker(shared_buf, total_shards):
 def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
     logging.basicConfig(level=logging.INFO, format='[%(asctime)s:%(levelname)-8s] %(message)s')
     # ensure at least 8 fans log at INFO -- root logger is INFO so OK
+    # Note: total_shards is accepted for CLI/API compatibility but is not used to
+    # determine workload anymore; we send exactly one shard per fan.
+    _ = total_shards
 
     manager = multiprocessing.Manager()
     shared_buf = SharedBuffer(manager)
@@ -67,7 +70,10 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
     stop_cleanup = multiprocessing.Event()
 
     # Start cleanup worker process (module-level function)
-    cleanup_proc = multiprocessing.Process(target=cleanup_worker, args=(shared_buf, stop_cleanup))
+    cleanup_proc = multiprocessing.Process(
+        target=cleanup_worker,
+        args=(shared_buf, stop_cleanup),
+    )
     cleanup_proc.start()
 
     # We will read a fixed number of shards in parallel (num_fans). Pick
@@ -104,7 +110,10 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
     verbose_count = min(8, len(shard_paths))
     for i in range(len(shard_paths)):
         verbose = i < verbose_count
-        p = multiprocessing.Process(target=producer_worker, args=(i, shared_buf, shard_paths[i], verbose))
+        p = multiprocessing.Process(
+            target=producer_worker,
+            args=(i, shared_buf, shard_paths[i], verbose),
+        )
         p.start()
         producers.append(p)
 
@@ -143,7 +152,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run shard simulation')
     parser.add_argument('--fans', type=int, default=16, help='Number of fan producers')
     parser.add_argument('--shards', type=int, default=128, help='Total number of shards to send')
-    parser.add_argument('--dj-timeout', type=int, default=None, help='DJ timeout in seconds (overrides DJ_TIMEOUT env)')
+    parser.add_argument(
+        '--dj-timeout',
+        type=int,
+        default=None,
+        help='DJ timeout in seconds (overrides DJ_TIMEOUT env)'
+    )
     args = parser.parse_args()
 
     # allow environment DJ_TIMEOUT to override default if CLI arg not provided

@@ -89,9 +89,17 @@ class Fan(object):
             try:
                 if getattr(shared_buffer, 'vj_has_all_shards', None) is not None and shared_buffer.vj_has_all_shards.value:
                     if self.__verbose:
-                        logger.info('fan %s detected DJ has capacity/full; removing temp and exiting -> %s', self.name(), tmp_name)
+                        logger.info(
+                            'fan %s detected DJ has capacity/full; removing temp and '
+                            'exiting -> %s',
+                            self.name(), tmp_name
+                        )
                     else:
-                        logger.debug('fan %s detected DJ has capacity/full; removing temp and exiting -> %s', self.name(), tmp_name)
+                        logger.debug(
+                            'fan %s detected DJ has capacity/full; removing temp and '
+                            'exiting -> %s',
+                            self.name(), tmp_name
+                        )
                     try:
                         os.remove(tmp_name)
                     except Exception:
@@ -109,7 +117,10 @@ class Fan(object):
                 # block up to 2 seconds to allow DJ to consume
                 put_ok = shared_buffer.put_shard(self.__name, tmp_name, timeout=2.0)
                 if not put_ok:
-                    logger.debug('fan %s backpressure: buffer full, retrying (%d/%d)', self.name(), attempt + 1, max_attempts)
+                    logger.debug(
+                        'fan %s backpressure: buffer full, retrying (%d/%d)',
+                        self.name(), attempt + 1, max_attempts
+                    )
                     time.sleep(0.2 * (attempt + 1))
                 attempt += 1
 
@@ -117,7 +128,11 @@ class Fan(object):
                 log_fn = logger.info if self.__verbose else logger.debug
                 log_fn('The fan %s sent shard -> shared buffer', self.name())
             else:
-                logger.error('fan %s failed to enqueue shard after %d attempts; registering shard for later cleanup %s', self.name(), max_attempts, tmp_name)
+                logger.error(
+                    'fan %s failed to enqueue shard after %d attempts; '
+                    'registering shard for later cleanup %s',
+                    self.name(), max_attempts, tmp_name
+                )
                 # Register the temp file with the shared buffer failed-temp list
                 try:
                     shared_buffer.register_failed_temp(tmp_name)
