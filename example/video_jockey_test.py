@@ -1,6 +1,9 @@
 
 import multiprocessing
-from unittest.mock import patch
+from unittest.mock import patch, patch as mock_patch
+from unittest import mock
+import tempfile
+import os
 
 import config
 import shared_buffer as sb
@@ -37,11 +40,14 @@ def test_read_all_shards():
     vj = video_jockey.VideoJockey()
     manager = multiprocessing.Manager()
     shared_buffer = sb.SharedBuffer(manager)
-    for i in range(config.SHARED_BUFFER_SIZE):
-        lock = manager.Lock()
-        lock.acquire()
-        shared_buffer.buffer()[i] = (lock, f'fan{i}', b'beef')
-    vj._VideoJockey__read_all_shards(shared_buffer)
+    # create temp files to simulate shard paths
+    tmp1 = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    tmp2 = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    tmp1.write(b'fake-mp4-1'); tmp1.flush(); tmp1.close()
+    tmp2.write(b'fake-mp4-2'); tmp2.flush(); tmp2.close()
+    assert shared_buffer.put_shard('fan0', tmp1.name, timeout=0.1)
+    assert shared_buffer.put_shard('fan1', tmp2.name, timeout=0.1)
+    assert vj._VideoJockey__read_all_shards(shared_buffer, total_shards=2)
 
 
 def read_test_shard():
@@ -68,15 +74,25 @@ def read_test_shard():
 @patch('config.NUM_SHARDS', 2)
 def test_start():
 
-    # read a test shard
-    byte_data = read_test_shard()
-
     # setup the vj
     vj = video_jockey.VideoJockey()
     manager = multiprocessing.Manager()
     shared_buffer = sb.SharedBuffer(manager)
-    for i in range(config.SHARED_BUFFER_SIZE):
-        lock = manager.Lock()
-        lock.acquire()
-        shared_buffer.buffer()[i] = (lock, f'fan{i}', byte_data)
-    vj.start(shared_buffer)
+    # create temp shard files and enqueue paths
+    tmp1 = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    tmp2 = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    tmp1.write(b'fake-mp4-1'); tmp1.flush(); tmp1.close()
+    tmp2.write(b'fake-mp4-2'); tmp2.flush(); tmp2.close()
+    assert shared_buffer.put_shard('fan0', tmp1.name, timeout=0.1)
+    assert shared_buffer.put_shard('fan1', tmp2.name, timeout=0.1)
+
+    # Avoid running real ffmpeg; patch write method to a no-op that returns a dummy path
+    with mock.patch.object(video_jockey.VideoJockey, f"_VideoJockey__write_video", return_value='/tmp/final.mp4'):
+        vj.start(shared_buffer, total_shards=2)
+
+    # cleanup temps
+    for p in (tmp1.name, tmp2.name):
+        try:
+            os.remove(p)
+        except OSError:
+            pass

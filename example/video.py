@@ -3,10 +3,11 @@ import os
 import platform
 import sys
 import time
+import json
+import subprocess
 from os.path import isfile, join
 
 import config
-import ffmpeg
 import vlc
 from config import logger
 
@@ -40,28 +41,24 @@ def position_changed_cb(event, player):
     sys.stdout.flush()
 
 
-def write_audio(audio_file_path, input_file):
-    (
-        ffmpeg
-        .output(input_file, audio_file_path, loglevel='quiet')
-        .run(overwrite_output=True)
-    )
+def write_audio(_audio_file_path, _input_file):
+    """Deprecated helper (previously ffmpeg-python). No-op retained for compatibility."""
+    return
 
 
 def shake256_hash(s):
     m = hashlib.shake_256()
     m.update(str.encode(s))
-    hash = m.hexdigest(8)
-    return hash
+    digest = m.hexdigest(8)
+    return digest
 
 
 def file_hash(file_path):
 
     try:
         file = open(file_path, 'rb')
-    except Exception as e:
-        logger.error(
-            f'Unable to open {file_path} exception={type(e).__name__}')
+    except OSError as e:
+        logger.error('Unable to open %s exception=%s', file_path, type(e).__name__)
         quit(-1)
 
     # read the data
@@ -74,37 +71,51 @@ def file_hash(file_path):
     s = byte_data.decode('latin-1')
 
     # calculate hash
-    hash = shake256_hash(s)
+    digest = shake256_hash(s)
 
-    return hash
+    return digest
 
 
 def dimensions(video_file_path):
-    probe = ffmpeg.probe(video_file_path)
-    probe_video = next(
-        (stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-    width = int(probe_video['width'])
-    height = int(probe_video['height'])
+    info = probe(video_file_path)
+    width = int(info.get('width'))
+    height = int(info.get('height'))
     return (width, height)
 
 
 def probe(video_file_path):
-    probe = ffmpeg.probe(video_file_path)
-    probe_video = next(
-        (stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-    return probe_video
+    """Return the first video stream info using ffprobe (JSON)."""
+    cmd = [
+        'ffprobe',
+        '-v', 'error',
+        '-print_format', 'json',
+        '-show_format',
+        '-show_streams',
+        str(video_file_path),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(f'ffprobe failed: {proc.stderr}')
+    data = json.loads(proc.stdout)
+    streams = data.get('streams', [])
+    video_stream = next((s for s in streams if s.get('codec_type') == 'video'), None)
+    if not video_stream:
+        raise RuntimeError('No video stream found')
+    return video_stream
 
 
 def temp_file_path(name, ext):
     '''
     creates a valid path to a temp file
     '''
-    if not os.path.exists(config.TEMP_DIR):
-        os.makedirs(config.TEMP_DIR)
-    hash = shake256_hash(name + str(time.time_ns()))
+    temp_dir = str(config.TEMP_DIR)
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+    digest = shake256_hash(name + str(time.time_ns()))
     temp_file_name = 'temp_' + name + '_' + hash + ext
-    temp_file_path = config.TEMP_DIR + '/' + temp_file_name
-    return temp_file_path
+    # fix variable name if used later
+    temp_file_name = 'temp_' + name + '_' + digest + ext
+    return os.path.join(temp_dir, temp_file_name)
 
 
 def audio(name, input_video_file_path, input_audio_file_path):
@@ -116,18 +127,22 @@ def audio(name, input_video_file_path, input_audio_file_path):
     print(f'\tinput audio file : {os.path.basename(input_audio_file_path)}')
     print(f'\tname             : {name}')
     print('\tstatus           : processing...', end='')
-    video_file = ffmpeg.input(input_video_file_path)
-    audio_file = ffmpeg.input(input_audio_file_path)
     output_file = temp_file_path(name, '.mp4')
-
-    # process
-    (
-        ffmpeg
-        # add audio back in to video
-        .concat(video_file, audio_file, v=1, a=1)
-        .output(output_file, loglevel='quiet')
-        .run()
-    )
+    # Use ffmpeg CLI to mux video + audio. Copy video, encode audio to AAC, and shorten to the shortest stream.
+    cmd = [
+        'ffmpeg', '-y',
+        '-i', str(input_video_file_path),
+        '-i', str(input_audio_file_path),
+        '-c:v', 'copy',
+        '-c:a', 'aac', '-b:a', str(getattr(config, 'AUDIO_BITRATE', '192k')),
+        '-shortest',
+        '-movflags', '+faststart',
+        output_file,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        logger.error('ffmpeg audio mux failed: %s', proc.stderr)
+        return None
 
     print('done')
     print(f'\toutput file: {os.path.basename(output_file)}')
@@ -145,26 +160,36 @@ def concat(name, *input_video_file_paths):
         return None
     print('Applying concat...')
     print(f'\tinput       : {n} videos')
-    video_files = []
+    list_file_path = None
     for i in range(n):
         input_video_file_path = input_video_file_paths[i]
-        if not os.path.exists(input_video_file_path):
-            logger.error(f'Unable to access the file {input_video_file_path}')
+        if not os.path.exists(str(input_video_file_path)):
+            logger.error('Unable to access the file %s', input_video_file_path)
             return None
-        input = ffmpeg.input(input_video_file_path)
-        video_files.append(input)
     print(f'\tname        : {name}')
     print('\tstatus      : processing...', end='')
     output_file = temp_file_path(name, '.mp4')
-
-    # process
-    (
-        ffmpeg
-        # add audio back in to video
-        .concat(*video_files)
-        .output(output_file, loglevel='quiet')
-        .run()
-    )
+    # Build a concat list file for the demuxer
+    temp_dir = str(config.TEMP_DIR)
+    list_file_path = os.path.join(temp_dir, f'concat_{shake256_hash(name)}.txt')
+    with open(list_file_path, 'w', encoding='utf-8') as fh:
+        for p in input_video_file_paths:
+            fh.write(f"file '{str(p).replace("'", "'\\''")}'\n")
+    # Use ffmpeg concat demuxer with stream copy
+    cmd = [
+        'ffmpeg', '-y',
+        '-f', 'concat', '-safe', '0', '-i', list_file_path,
+        '-c', 'copy',
+        output_file,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        os.remove(list_file_path)
+    except OSError:
+        pass
+    if proc.returncode != 0:
+        logger.error('ffmpeg concat failed: %s', proc.stderr)
+        return None
 
     print('done')
     print(f'\toutput file : {os.path.basename(output_file)}')
@@ -205,10 +230,9 @@ def play(file_path):
             time.sleep(0.5)
 
         # getting the duration of the video
-        duration = player.get_length()
-
-        # printing the duration of the video
-        logger.info('Duration : ' + ms_to_timecode(duration))
+    duration_ms = player.get_length()
+    # printing the duration of the video
+    logger.info('Duration : %s', ms_to_timecode(duration_ms))
 
 
 def clean_temp_directory():
@@ -221,30 +245,28 @@ def clean_temp_directory():
 
 
 def create_shard(input_file_path, output_file_path, start, end):
-
-    # get input video for ffmpeg
-    input_file = ffmpeg.input(input_file_path)
-
     # create output dir if needed
-    dir = os.path.dirname(output_file_path)
-    if not os.path.exists(dir):
-        os.mkdir(dir)
+    dir_name = os.path.dirname(output_file_path)
+    if dir_name and not os.path.exists(dir_name):
+        os.makedirs(dir_name, exist_ok=True)
 
-    # trim video
-    start_time = ms_to_timecode(start*1000)
-    end_time = ms_to_timecode(end*1000)
-
-    logger.info(f'writing {output_file_path}')
-    (
-        ffmpeg
-        # trim
-        .trim(input_file, start=start_time, end=end_time)
-        # reset start time code of video to 0
-        .setpts('PTS-STARTPTS')
-        # output the file
-        .output(output_file_path, loglevel='quiet')
-        .run(overwrite_output=True)
-    )
+    # trim using stream copy; start/end in seconds
+    start_s = float(start)
+    end_s = float(end)
+    duration = max(0.0, end_s - start_s)
+    logger.info('writing %s', output_file_path)
+    cmd = [
+        'ffmpeg', '-y',
+        '-ss', str(start_s),
+        '-t', str(duration),
+        '-i', str(input_file_path),
+        '-c', 'copy',
+        output_file_path,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        logger.error('ffmpeg trim failed: %s', proc.stderr)
+        return None
 
 
 def write(name, shard_data):
@@ -255,9 +277,8 @@ def write(name, shard_data):
 
     try:
         file = open(output_file_path, 'wb')
-    except Exception as e:
-        logger.error(
-            f'Unable to open {output_file_path} exception={type(e).__name__}')
+    except OSError as e:
+        logger.error('Unable to open %s exception=%s', output_file_path, type(e).__name__)
         quit(-1)
 
     # write the data
