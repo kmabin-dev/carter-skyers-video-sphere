@@ -1,20 +1,23 @@
 import multiprocessing
-import time
 import logging
 import os
 import argparse
+import random
 
+import config
 from shared_buffer import SharedBuffer
 from fan import Fan
 from video_jockey import VideoJockey
 
 
-def producer_worker(fan_id, shared_buf, sends_per_fan):
-    f = Fan(fan_id)
-    for _ in range(sends_per_fan):
-        f.send_shard(shared_buf)
-        # small jitter
-        time.sleep(0.001)
+def producer_worker(fan_id, shared_buf, shard_path):
+    """
+    Producer worker that reads a single shard from disk (shard_path) and
+    writes it to the shared buffer.
+    """
+    f = Fan(fan_id, shard_path=shard_path)
+    # single send per fan (we spawn exactly as many fans as selected shards)
+    f.send_shard(shared_buf)
 
 
 def dj_worker(shared_buf, total_shards):
@@ -29,16 +32,40 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
     manager = multiprocessing.Manager()
     shared_buf = SharedBuffer(manager)
 
-    sends_per_fan = total_shards // num_fans
+    # We will read a fixed number of shards in parallel (num_fans). Pick
+    # up to `num_fans` random shard files from the shards directory.
+    try:
+        shards_dir = config.SHARDS_DIR
+        # list candidate shard files (shard_0000.mp4 ...)
+        candidates = []
+        if os.path.isdir(str(shards_dir)):
+            for fn in os.listdir(str(shards_dir)):
+                if fn.startswith('shard_') and fn.endswith('.mp4'):
+                    candidates.append(os.path.join(str(shards_dir), fn))
+        # If we found fewer candidates on disk than the number of fans we need,
+        # generate the expected shard file names from the total_shards range
+        if len(candidates) < num_fans:
+            candidates = []
+            for i in range(total_shards):
+                padded = str(i).zfill(4)
+                candidates.append(str(shards_dir / f'shard_{padded}.mp4'))
 
-    # start DJ
-    dj = multiprocessing.Process(target=dj_worker, args=(shared_buf, total_shards))
+        # choose exactly num_fans unique random shards (or fewer if not enough exist)
+        shard_paths = random.sample(candidates, k=min(num_fans, len(candidates)))
+    except Exception as e:
+        logging.getLogger(__name__).warning('Failed to enumerate shard files: %s; falling back to random-per-fan', e)
+        # fallback: let each fan pick a random shard internally
+        shard_paths = [None] * num_fans
+
+    # start DJ - expect as many shards as we selected (len(shard_paths))
+    expected_shards = len(shard_paths)
+    dj = multiprocessing.Process(target=dj_worker, args=(shared_buf, expected_shards))
     dj.start()
 
-    # start producers
+    # start producers (one per selected shard)
     producers = []
-    for i in range(num_fans):
-        p = multiprocessing.Process(target=producer_worker, args=(i, shared_buf, sends_per_fan))
+    for i in range(len(shard_paths)):
+        p = multiprocessing.Process(target=producer_worker, args=(i, shared_buf, shard_paths[i]))
         p.start()
         producers.append(p)
 

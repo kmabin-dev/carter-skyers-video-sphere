@@ -13,11 +13,13 @@ class Fan(object):
     fan class
     '''
 
-    def __init__(self, id):
-
+    def __init__(self, id, shard_path=None):
         self.__id = id
         self.__name = FAKE.name()
-        self.__buffer = self.read_random_shard()
+        # optional shard_path; if provided, read_random_shard will use it
+        self.__shard_path = shard_path
+        # keep a small buffer attribute for tests that expect it
+        self.__buffer = b''
 
     def id(self):
         return self.__id
@@ -32,10 +34,14 @@ class Fan(object):
         '''
         read a random shard from disk, returns the shard id and the byte data
         '''
-        shard_id = random.randint(0, config.NUM_SHARDS - 1)
-        padded = str(shard_id).zfill(4)
-        # SHARDS_DIR may be a Path; construct path safely
-        file_path = config.SHARDS_DIR / f'shard_{padded}.mp4'
+        # If a specific shard path was provided, use it.
+        if getattr(self, '_Fan__shard_path', None):
+            file_path = self.__shard_path
+        else:
+            shard_id = random.randint(0, config.NUM_SHARDS - 1)
+            padded = str(shard_id).zfill(4)
+            # SHARDS_DIR may be a Path; construct path safely
+            file_path = config.SHARDS_DIR / f'shard_{padded}.mp4'
 
         try:
             file = open(str(file_path), 'rb')
