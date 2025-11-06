@@ -20,6 +20,10 @@ class SharedBuffer(object):
         # bounded queue for shard entries (sender_name, file_path)
         # Use manager.Queue so it is safe across processes
         self._queue = manager.Queue(maxsize=config.SHARED_BUFFER_SIZE)
+        # list of temp file paths that failed to be enqueued and need cleanup
+        # producers register failed temp files here instead of deleting them
+        # immediately so a separate cleanup worker can remove them safely.
+        self.failed_temp_paths = manager.list()
 
     def put_shard(self, sender_name, file_path, timeout=5.0):
         """Try to put a shard into the queue. Returns True on success.
@@ -49,6 +53,29 @@ class SharedBuffer(object):
             return self._queue.qsize()
         except Exception:
             return 0
+
+    def register_failed_temp(self, temp_path):
+        """Producers call this to register a temp file that couldn't be
+        enqueued. The cleanup worker will later attempt to remove these.
+        """
+        try:
+            # Avoid duplicates
+            if temp_path not in self.failed_temp_paths:
+                self.failed_temp_paths.append(temp_path)
+        except Exception:
+            pass
+
+    def get_and_clear_failed_temps(self):
+        """Return a snapshot list of failed temp paths and clear the list
+        in a single operation.
+        """
+        try:
+            snapshot = list(self.failed_temp_paths)
+            # clear the manager list
+            del self.failed_temp_paths[:]
+            return snapshot
+        except Exception:
+            return []
 
     # Compatibility helper: older tests may call buffer(), keep it but mark as legacy
     def buffer(self):

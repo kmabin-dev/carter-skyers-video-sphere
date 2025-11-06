@@ -9,6 +9,36 @@ import config
 from shared_buffer import SharedBuffer
 from fan import Fan
 from video_jockey import VideoJockey
+import time
+
+
+def cleanup_worker(shared_buf, stop_event, interval=30):
+    """Top-level cleanup worker for failed temp files.
+
+    Implemented at module level so it can be spawned by multiprocessing.
+    """
+    import os, logging
+    logger = logging.getLogger('cleanup')
+    while not stop_event.is_set():
+        try:
+            failed = shared_buf.get_and_clear_failed_temps()
+            if failed:
+                logger.info('cleanup worker found %d failed temp(s)', len(failed))
+                for p in failed:
+                    try:
+                        if os.path.exists(p):
+                            os.remove(p)
+                            logger.info('cleanup removed %s', p)
+                        else:
+                            logger.debug('cleanup: file not present %s', p)
+                    except Exception as e:
+                        logger.warning('cleanup failed removing %s: %s', p, e)
+        except Exception:
+            # keep looping; don't let cleanup worker crash
+            pass
+        # sleep for the configured interval (or until stopped)
+        stop_event.wait(interval)
+
 
 
 def producer_worker(fan_id, shared_buf, shard_path):
@@ -32,6 +62,13 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
 
     manager = multiprocessing.Manager()
     shared_buf = SharedBuffer(manager)
+
+    # Create an Event to signal the cleanup worker to stop
+    stop_cleanup = multiprocessing.Event()
+
+    # Start cleanup worker process (module-level function)
+    cleanup_proc = multiprocessing.Process(target=cleanup_worker, args=(shared_buf, stop_cleanup))
+    cleanup_proc.start()
 
     # We will read a fixed number of shards in parallel (num_fans). Pick
     # up to `num_fans` random shard files from the shards directory.
@@ -72,6 +109,9 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
     for p in producers:
         p.join()
 
+    # Once producers have finished, give a short grace period for the DJ to
+    # collect remaining items and then stop the cleanup worker.
+
     # wait for dj to finish (timeout can be specified via env var DJ_TIMEOUT or CLI)
     if dj_timeout is None:
         try:
@@ -85,6 +125,15 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
         dj.terminate()
     else:
         print('DJ finished')
+
+    # Signal cleanup worker to exit and join it
+    try:
+        stop_cleanup.set()
+        cleanup_proc.join(timeout=5)
+        if cleanup_proc.is_alive():
+            cleanup_proc.terminate()
+    except Exception:
+        pass
 
 
 if __name__ == '__main__':

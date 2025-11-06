@@ -82,6 +82,20 @@ class Fan(object):
             tmp_name = tmp.name
             tmp.close()
 
+            # If the VideoJockey has already claimed all shards, stop and
+            # remove our temp file to avoid unnecessary work.
+            try:
+                if getattr(shared_buffer, 'vj_has_all_shards', None) is not None and shared_buffer.vj_has_all_shards.value:
+                    logger.info('fan %s detected DJ has capacity/full; removing temp and exiting -> %s', self.name(), tmp_name)
+                    try:
+                        os.remove(tmp_name)
+                    except Exception:
+                        pass
+                    return
+            except Exception:
+                # If anything goes wrong reading the flag, continue attempting to enqueue
+                pass
+
             # Try to put into the bounded shared buffer with retries/backoff.
             max_attempts = 5
             attempt = 0
@@ -97,12 +111,16 @@ class Fan(object):
             if put_ok:
                 logger.info('The fan %s sent shard -> %s', self.name(), tmp_name)
             else:
-                logger.error('fan %s failed to enqueue shard after %d attempts; dropping shard %s', self.name(), max_attempts, tmp_name)
-                # best-effort cleanup of temp file if we couldn't publish
+                logger.error('fan %s failed to enqueue shard after %d attempts; registering shard for later cleanup %s', self.name(), max_attempts, tmp_name)
+                # Register the temp file with the shared buffer failed-temp list
                 try:
-                    os.remove(tmp_name)
+                    shared_buffer.register_failed_temp(tmp_name)
                 except Exception:
-                    pass
+                    # Fall back to best-effort removal if registration fails
+                    try:
+                        os.remove(tmp_name)
+                    except Exception:
+                        pass
 
         except (OSError, IOError) as e:
             logger.error('fan %s failed to write shard: %s', self.name(), e)

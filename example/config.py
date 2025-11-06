@@ -24,7 +24,7 @@ NUM_FANS = 4
 #
 # get logger
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 #
 # STUDENTS CAN, BUT SHOULD NOT NEED TO CHANGE ANYTHING BELOW THIS LINE
