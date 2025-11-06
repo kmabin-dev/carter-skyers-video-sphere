@@ -71,7 +71,7 @@ class VideoJockey(object):
     def __write_video(self):
         '''
         Compose received video shards into a final video using ffmpeg.
-        Uses concatenation to combine the video shards.
+        Uses concatenation to combine the video shards and adds audio from source.
         '''
         # Ensure temp dir exists for output
         out_dir = config.TEMP_DIR
@@ -100,13 +100,17 @@ class VideoJockey(object):
                     # FFmpeg concat demuxer requires 'file' prefix and single quotes
                     fh.write(f"file '{p.replace(chr(39), chr(39) + '\\' + chr(39))}'\n")
 
-            # Build ffmpeg command
+            # Build ffmpeg command with audio input
             ffmpeg_cmd = [
                 'ffmpeg',
                 '-f', 'concat',        # Use concat demuxer
                 '-safe', '0',          # Allow absolute paths
-                '-i', list_path,       # Input list file
-                '-c', 'copy',          # Stream copy (no re-encode)
+                '-i', list_path,       # Input list file (video shards)
+                '-i', str(config.SOURCE_AUDIO_FILE_PATH),  # Input audio file
+                '-c:v', 'copy',        # Stream copy video (no re-encode)
+                '-c:a', 'aac',         # Encode audio as AAC
+                '-b:a', '192k',        # Audio bitrate
+                '-shortest',           # Match shortest stream length
                 '-movflags', '+faststart',  # Web playback optimization
                 '-y',                  # Overwrite output
                 out_path              # Output path
