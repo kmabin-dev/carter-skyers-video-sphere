@@ -33,19 +33,15 @@ class VideoJockey(object):
         returns a list of file paths that were consumed.
         '''
         collected = []
+        import time
         while len(collected) < total_shards:
-            item = shared_buffer.read_any_slot_nonblocking()
+            item = shared_buffer.get_shard(timeout=1.0)
             if item is None:
                 # no slot currently available, small sleep to avoid busy spin
-                import time
-                time.sleep(0.01)
+                time.sleep(0.05)
                 continue
-            idx, sender_name, file_path = item
-            logger.info(
-                '%s received shard from %s in slot %d -> %s',
-                self.name(), sender_name, idx, file_path
-            )
-            # append the file_path as the shard representation
+            sender_name, file_path = item
+            logger.info('%s received shard from %s -> %s', self.name(), sender_name, file_path)
             collected.append((sender_name, file_path))
 
         # indicate to all fans that the vj has all the shards

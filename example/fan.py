@@ -67,43 +67,45 @@ class Fan(object):
         '''
         example code to send a shard to shared buffer element 0
         '''
-        # Try to acquire a free slot (non-blocking). If none free, back off and retry.
-        logger.debug('fan %s trying to acquire a free slot', self.name())
-        idx = shared_buffer.try_acquire_free_slot()
-        while idx is None:
-            # small backoff to avoid busy spin
-            import time
-            time.sleep(0.01)
-            idx = shared_buffer.try_acquire_free_slot()
-
-        # We now hold the lock for slot idx. Write our shard to a temp file and publish path.
+        # Write our shard to a temp file and publish its path to the bounded queue.
         try:
             # ensure temp dir exists
             tmp_dir = config.TEMP_DIR
-            # Create temp dir; it handles Path objects in Python 3.8+
             os.makedirs(tmp_dir, exist_ok=True)
 
             # write a temporary file then publish its path
-            import tempfile
+            import tempfile, time
             tmp = tempfile.NamedTemporaryFile(delete=False, dir=str(tmp_dir))
-            # get shard payload for this send
             payload = self.read_random_shard()
             tmp.write(payload)
             tmp.flush()
             tmp_name = tmp.name
             tmp.close()
 
-            # publish to shared buffer and release lock
-            shared_buffer.write_slot(idx, self.__name, tmp_name)
-            logger.info(
-                'The fan %s sent shard to slot %d -> %s',
-                self.name(), idx, tmp_name
-            )
+            # Try to put into the bounded shared buffer with retries/backoff.
+            max_attempts = 5
+            attempt = 0
+            put_ok = False
+            while attempt < max_attempts and not put_ok:
+                # block up to 2 seconds to allow DJ to consume
+                put_ok = shared_buffer.put_shard(self.__name, tmp_name, timeout=2.0)
+                if not put_ok:
+                    logger.debug('fan %s backpressure: buffer full, retrying (%d/%d)', self.name(), attempt + 1, max_attempts)
+                    time.sleep(0.2 * (attempt + 1))
+                attempt += 1
+
+            if put_ok:
+                logger.info('The fan %s sent shard -> %s', self.name(), tmp_name)
+            else:
+                logger.error('fan %s failed to enqueue shard after %d attempts; dropping shard %s', self.name(), max_attempts, tmp_name)
+                # best-effort cleanup of temp file if we couldn't publish
+                try:
+                    os.remove(tmp_name)
+                except Exception:
+                    pass
+
         except (OSError, IOError) as e:
-            logger.error(
-                'fan %s failed to write shard: %s',
-                self.name(), e
-            )
+            logger.error('fan %s failed to write shard: %s', self.name(), e)
 
     def start(self, shared_buffer):
         self.send_shard(shared_buffer)
