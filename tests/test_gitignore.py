@@ -17,8 +17,8 @@ def git_check_ignore(paths):
     for line in out.splitlines():
         # git check-ignore -v output format is: <pattern>\t<source>\t<path>
         # split on tab to preserve paths that contain spaces; fallback to whitespace
-        if '\t' in line:
-            parts = line.split('\t')
+        if "\t" in line:
+            parts = line.split("\t")
             path_part = parts[-1]
         else:
             parts = line.split()
@@ -47,11 +47,11 @@ class TestGitIgnore(unittest.TestCase):
     def test_media_and_dirs_ignored(self):
         # create sample files and directories
         samples = [
-            REPO_ROOT / 'video' / 'sample.mp4',
-            REPO_ROOT / 'video_test' / 'sample.mp3',
-            REPO_ROOT / 'video_shards' / 'shards.json',
-            REPO_ROOT / 'temp' / 'foo.tmp',
-            REPO_ROOT / 'nested' / 'movie.mkv',
+            REPO_ROOT / "video" / "sample.mp4",
+            REPO_ROOT / "video_test" / "sample.mp3",
+            REPO_ROOT / "video_shards" / "shards.json",
+            REPO_ROOT / "temp" / "foo.tmp",
+            REPO_ROOT / "nested" / "movie.mkv",
         ]
         for p in samples:
             self.touch(p)
@@ -59,14 +59,18 @@ class TestGitIgnore(unittest.TestCase):
         ignored = git_check_ignore(samples)
         # Assert each created sample is ignored
         for p in samples:
-            self.assertIn(str(p), ignored, f"{p} should be ignored by .gitignore")
+            self.assertIn(
+                str(p), ignored, f"{p} should be ignored by .gitignore"
+            )
 
     def test_tracked_file_not_ignored(self):
         # README.md should not be ignored
-        readme = REPO_ROOT / 'README.md'
+        readme = REPO_ROOT / "README.md"
         ignored = git_check_ignore([readme])
-        self.assertNotIn(str(readme), ignored, "README.md should not be ignored")
+        self.assertNotIn(
+            str(readme), ignored, "README.md should not be ignored"
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

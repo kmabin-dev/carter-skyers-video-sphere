@@ -9,9 +9,11 @@ class TestProjectDir(unittest.TestCase):
         project_dir = config.PROJECT_DIR
         if isinstance(project_dir, str):
             project_dir = Path(project_dir)
-        self.assertTrue(project_dir.exists() and project_dir.is_dir(),
-                        f"PROJECT_DIR does not exist or is not a directory: {project_dir}")
+        self.assertTrue(
+            project_dir.exists() and project_dir.is_dir(),
+            f"PROJECT_DIR does not exist or is not a directory: {project_dir}",
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

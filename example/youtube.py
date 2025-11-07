@@ -10,27 +10,21 @@ from config import logger
 
 
 def video_file_name(d_video):
-    '''
+    """
     simplify video file name for writing to disk
-    '''
+    """
     fname = d_video.default_filename
     n = len(fname)
     if n == 0:
-        return ''
+        return ""
 
     # replace chars
-    fname = (
-        fname
-        .replace(' ', '-')
-        .replace('(', '')
-        .replace(')', '')
-        .lower()
-    )
+    fname = fname.replace(" ", "-").replace("(", "").replace(")", "").lower()
     # remove duplicate '-' chars
     s = fname[0]
     for i in range(1, len(fname)):
         # if not a dup -, append to s
-        if fname[i-1] != '-' or fname[i] != '-':
+        if fname[i - 1] != "-" or fname[i] != "-":
             s += fname[i]
 
     return s
@@ -39,12 +33,12 @@ def video_file_name(d_video):
 def download(url):
 
     # download video
-    logger.info('downloading video for %s', url)
+    logger.info("downloading video for %s", url)
     try:
         yt = pytubefix.YouTube(url)
     except Exception as e:
         logger.warning(
-            'WARNING: Exception raised while getting video for %s exception=%s',
+            "WARNING: Exception raised while getting video for %s exception=%s",
             url,
             type(e).__name__,
         )
@@ -70,7 +64,7 @@ def write_video(d_video, video_dir, file_name):
         d_video.download(output_path=video_dir, filename=file_name)
     except Exception as e:
         logger.warning(
-            'WARNING: Unable to write video for %s exception=%s',
+            "WARNING: Unable to write video for %s exception=%s",
             video_dir,
             type(e).__name__,
         )

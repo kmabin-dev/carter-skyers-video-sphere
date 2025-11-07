@@ -15,7 +15,9 @@ def test_shard_success_has_correct_hash_and_accessors():
 
     try:
         expected_hash = video.file_hash(tmp_path)
-        s = Shard(id=123, start=0.0, end=1.0, file_path=tmp_path, hash=expected_hash)
+        s = Shard(
+            id=123, start=0.0, end=1.0, file_path=tmp_path, hash=expected_hash
+        )
 
         assert s.id() == 123
         assert s.start() == 0.0
@@ -42,7 +44,9 @@ def test_shard_raises_on_hash_mismatch():
     try:
         wrong_hash = "deadbeef"
         with pytest.raises(Exception):
-            Shard(id=1, start=0.0, end=1.0, file_path=tmp_path, hash=wrong_hash)
+            Shard(
+                id=1, start=0.0, end=1.0, file_path=tmp_path, hash=wrong_hash
+            )
     finally:
         try:
             os.remove(tmp_path)

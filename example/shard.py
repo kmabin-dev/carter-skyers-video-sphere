@@ -11,9 +11,9 @@ import video
 
 
 class Shard(object):
-    '''
+    """
     video shard class
-    '''
+    """
 
     def __init__(self, id, start, end, file_path, hash):
 
@@ -24,7 +24,7 @@ class Shard(object):
         self.__hash = video.file_hash(file_path)
 
         if self.__hash != hash:
-            logger.error('File hash does not match. Data is corrupted.')
+            logger.error("File hash does not match. Data is corrupted.")
             raise Exception
 
     def id(self):
@@ -44,11 +44,11 @@ class Shard(object):
 
     def __str__(self):
         d = {
-            'id': self.__id,
-            'start': self.__start,
-            'end': self.__end,
-            'file_path': self.__file_path,
-            'hash': self.__hash
+            "id": self.__id,
+            "start": self.__start,
+            "end": self.__end,
+            "file_path": self.__file_path,
+            "hash": self.__hash,
         }
         s = json.dumps(d, indent=4)
         return s

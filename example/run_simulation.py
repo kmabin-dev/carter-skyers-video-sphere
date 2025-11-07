@@ -27,25 +27,32 @@ def cleanup_worker(shared_buf, stop_event, interval=30):
 
     Implemented at module level so it can be spawned by multiprocessing.
     """
-    logger = logging.getLogger('cleanup')
+    logger = logging.getLogger("cleanup")
     while not stop_event.is_set():
         try:
             failed = shared_buf.get_and_clear_failed_temps()
             if failed:
-                logger.info('cleanup worker found %d failed temp(s)',
-                            len(failed))
+                logger.info(
+                    "cleanup worker found %d failed temp(s)", len(failed)
+                )
                 for p in failed:
                     try:
                         if os.path.exists(p):
                             os.remove(p)
-                            logger.info('cleanup removed %s', p)
+                            logger.info("cleanup removed %s", p)
                         else:
-                            logger.debug('cleanup: file not present %s', p)
+                            logger.debug("cleanup: file not present %s", p)
                     except OSError as e:
-                        logger.warning('cleanup failed removing %s: %s', p, e)
-        except (AttributeError, ValueError, EOFError, BrokenPipeError, OSError) as e:
+                        logger.warning("cleanup failed removing %s: %s", p, e)
+        except (
+            AttributeError,
+            ValueError,
+            EOFError,
+            BrokenPipeError,
+            OSError,
+        ) as e:
             # keep looping; don't let cleanup worker crash
-            logger.debug('cleanup loop caught and ignored: %s', e)
+            logger.debug("cleanup loop caught and ignored: %s", e)
         # sleep for the configured interval (or until stopped)
         stop_event.wait(interval)
 
@@ -67,8 +74,7 @@ def dj_worker(shared_buf, total_shards):
 
 def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
     logging.basicConfig(
-        level=logging.INFO,
-        format='[%(asctime)s:%(levelname)-8s] %(message)s'
+        level=logging.INFO, format="[%(asctime)s:%(levelname)-8s] %(message)s"
     )
     # ensure at least 8 fans log at INFO -- root logger is INFO so OK
     # Note: total_shards is accepted for CLI/API compatibility but is not
@@ -97,18 +103,18 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
     candidates = []
     if os.path.isdir(str(shards_dir)):
         for fn in sorted(os.listdir(str(shards_dir))):
-            if fn.startswith('shard_') and fn.endswith('.mp4'):
-                candidates.append(
-                    os.path.join(str(shards_dir), fn)
-                )
+            if fn.startswith("shard_") and fn.endswith(".mp4"):
+                candidates.append(os.path.join(str(shards_dir), fn))
 
     if len(candidates) < num_fans:
         logger = logging.getLogger(__name__)
         logger.error(
-            'Not enough shard files present in %s: found %d, need %d.\n'
-            'Run the shard generator or place the shard files under '
-            'that directory and try again.',
-            shards_dir, len(candidates), num_fans
+            "Not enough shard files present in %s: found %d, need %d.\n"
+            "Run the shard generator or place the shard files under "
+            "that directory and try again.",
+            shards_dir,
+            len(candidates),
+            num_fans,
         )
         sys.exit(1)
 
@@ -118,8 +124,7 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
     # start DJ - expect as many shards as we selected (len(shard_paths))
     expected_shards = len(shard_paths)
     dj = multiprocessing.Process(
-        target=dj_worker,
-        args=(shared_buf, expected_shards)
+        target=dj_worker, args=(shared_buf, expected_shards)
     )
     dj.start()
 
@@ -147,16 +152,16 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
     # or CLI)
     if dj_timeout is None:
         try:
-            dj_timeout = int(os.environ.get('DJ_TIMEOUT', '600'))
+            dj_timeout = int(os.environ.get("DJ_TIMEOUT", "600"))
         except ValueError:
             dj_timeout = 600
 
     dj.join(timeout=dj_timeout)
     if dj.is_alive():
-        print(f'DJ did not finish in time ({dj_timeout}s), terminating')
+        print(f"DJ did not finish in time ({dj_timeout}s), terminating")
         dj.terminate()
     else:
-        print('DJ finished')
+        print("DJ finished")
 
     # Signal cleanup worker to exit and join it
     try:
@@ -168,27 +173,22 @@ def run_simulation(num_fans=16, total_shards=128, dj_timeout=None):
         pass
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description='Run shard simulation'
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run shard simulation")
+    parser.add_argument(
+        "--fans", type=int, default=16, help="Number of fan producers"
     )
     parser.add_argument(
-        '--fans',
-        type=int,
-        default=16,
-        help='Number of fan producers'
-    )
-    parser.add_argument(
-        '--shards',
+        "--shards",
         type=int,
         default=128,
-        help='Total number of shards to send'
+        help="Total number of shards to send",
     )
     parser.add_argument(
-        '--dj-timeout',
+        "--dj-timeout",
         type=int,
         default=None,
-        help='DJ timeout in seconds (overrides DJ_TIMEOUT env)'
+        help="DJ timeout in seconds (overrides DJ_TIMEOUT env)",
     )
     args = parser.parse_args()
 
@@ -197,5 +197,5 @@ if __name__ == '__main__':
     run_simulation(
         num_fans=args.fans,
         total_shards=args.shards,
-        dj_timeout=args.dj_timeout
+        dj_timeout=args.dj_timeout,
     )

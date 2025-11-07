@@ -12,7 +12,9 @@ from pathlib import Path
 #
 # project directory (use Path for safe joins)
 # Note: some modules expect strings for file paths; use str(...) when needed.
-PROJECT_DIR = Path('/Users/kay/Documents/Advanced Python/Carter-skyers-video-sphere')
+PROJECT_DIR = Path(
+    "/Users/kay/Documents/Advanced Python/Carter-skyers-video-sphere"
+)
 
 #
 # STUDENTS MAY WISH TO CHANGE (REDUCE) THE FOLLOWING PARAMETERS WHILE TESTING AND DEBUGGING THEIR CODE
@@ -41,35 +43,39 @@ FAN_BUFFER_SIZE = 16
 SHARED_BUFFER_SIZE = 4
 
 # temporary directory for videos
-TEMP_DIR = PROJECT_DIR / 'temp'
+TEMP_DIR = PROJECT_DIR / "temp"
 
 # url
 URL = (
-	'https://www.youtube.com/watch?v=WU4UxWaf8U8'
-	'&list=PLIx-eqjsmIuCoHbep0iithAFB6U793VVA'
+    "https://www.youtube.com/watch?v=WU4UxWaf8U8"
+    "&list=PLIx-eqjsmIuCoHbep0iithAFB6U793VVA"
 )
 
 # source hires files
-SOURCE_VIDEO_BASENAME = 'carter-skyers-easiest-goodbye-official-music-video'
-SOURCE_VIDEO_FILE_PATH = PROJECT_DIR / 'video' / f"{SOURCE_VIDEO_BASENAME}.mp4"
-SOURCE_AUDIO_FILE_PATH = PROJECT_DIR / 'video' / f"{SOURCE_VIDEO_BASENAME}.mp3"
+SOURCE_VIDEO_BASENAME = "carter-skyers-easiest-goodbye-official-music-video"
+SOURCE_VIDEO_FILE_PATH = PROJECT_DIR / "video" / f"{SOURCE_VIDEO_BASENAME}.mp4"
+SOURCE_AUDIO_FILE_PATH = PROJECT_DIR / "video" / f"{SOURCE_VIDEO_BASENAME}.mp3"
 
 # video epsilon
 TIME_EPSILON = 0.0000001
 
 # shards json file
-SHARDS_DIR = PROJECT_DIR / 'video_shards'
-SHARDS_JSON_FILE_PATH = SHARDS_DIR / 'shards.json'
+SHARDS_DIR = PROJECT_DIR / "video_shards"
+SHARDS_JSON_FILE_PATH = SHARDS_DIR / "shards.json"
 
 # configure log output format
-FORMAT = '[%(asctime)s:%(levelname)-8s] %(message)s'
+FORMAT = "[%(asctime)s:%(levelname)-8s] %(message)s"
 logging.basicConfig(format=FORMAT)
 
 
 # test short video files
-TEST_VIDEO_BASENAME = 'carter-skyers-easiest-goodbye-official-music-video'
-TEST_VIDEO_FILE_PATH = PROJECT_DIR / 'video_test' / f"{TEST_VIDEO_BASENAME}.mp4"
-TEST_AUDIO_FILE_PATH = PROJECT_DIR / 'video_test' / f"{TEST_VIDEO_BASENAME}.mp3"
+TEST_VIDEO_BASENAME = "carter-skyers-easiest-goodbye-official-music-video"
+TEST_VIDEO_FILE_PATH = (
+    PROJECT_DIR / "video_test" / f"{TEST_VIDEO_BASENAME}.mp4"
+)
+TEST_AUDIO_FILE_PATH = (
+    PROJECT_DIR / "video_test" / f"{TEST_VIDEO_BASENAME}.mp3"
+)
 
 # Convenience string versions (some older code may expect str paths)
 PROJECT_DIR_STR = str(PROJECT_DIR)
@@ -90,6 +96,6 @@ AUDIO_FADE_IN_SECONDS = 1.0
 # Audio fade-out duration in seconds (applied using areverse trick)
 AUDIO_FADE_OUT_SECONDS = 2.3
 # Audio bitrate for AAC encoding
-AUDIO_BITRATE = '192k'
+AUDIO_BITRATE = "192k"
 # Auto-play the final video on macOS after composition completes
 AUTO_PLAY_FINAL_VIDEO = True

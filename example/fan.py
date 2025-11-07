@@ -16,12 +16,37 @@ import tempfile
 import time
 
 from contextlib import suppress
-from faker import Faker
+
+try:
+    # Optional dependency: if unavailable, we fall back to a static name list
+    from faker import Faker  # type: ignore
+except ImportError:
+    Faker = None  # type: ignore
 
 import config
 from config import logger
 
-FAKE = Faker()
+if Faker is not None:
+    FAKE = Faker()
+else:
+    FAKE = None  # type: ignore
+    _FALLBACK_NAMES = [
+        "Alex Johnson",
+        "Taylor Reed",
+        "Jordan Lee",
+        "Casey Morgan",
+        "Riley Parker",
+        "Quinn Carter",
+        "Avery Brooks",
+        "Shawn Rivera",
+        "Charlie Kim",
+        "Robin Bailey",
+        "Jessie Scott",
+        "Sam Kelly",
+    ]
+
+    def _fallback_name():
+        return random.choice(_FALLBACK_NAMES)
 
 
 class Fan(object):
@@ -31,7 +56,7 @@ class Fan(object):
 
     def __init__(self, fan_id, shard_path=None, verbose=True):
         self.__id = fan_id
-        self.__name = FAKE.name()
+        self.__name = FAKE.name() if FAKE else _fallback_name()
         # optional shard_path; if provided, read_random_shard will use it
         self.__shard_path = shard_path
         # keep a small buffer attribute for tests that expect it
@@ -101,7 +126,11 @@ class Fan(object):
             # If the VideoJockey has already claimed all shards, stop and
             # remove our temp file to avoid unnecessary work.
             vj_flag = getattr(shared_buffer, "vj_has_all_shards", None)
-            has_all = bool(getattr(vj_flag, "value", False)) if vj_flag is not None else False
+            has_all = (
+                bool(getattr(vj_flag, "value", False))
+                if vj_flag is not None
+                else False
+            )
             if has_all:
                 log_fn = logger.info if self.__verbose else logger.debug
                 log_fn(
@@ -119,7 +148,9 @@ class Fan(object):
             put_ok = False
             while attempt < max_attempts and not put_ok:
                 # block up to 2 seconds to allow DJ to consume
-                put_ok = shared_buffer.put_shard(self.__name, tmp_name, timeout=2.0)
+                put_ok = shared_buffer.put_shard(
+                    self.__name, tmp_name, timeout=2.0
+                )
                 if not put_ok:
                     logger.debug(
                         "fan %s backpressure: buffer full, retrying (%d/%d)",
@@ -146,9 +177,17 @@ class Fan(object):
                 if callable(register):
                     try:
                         register(tmp_name)
-                    except (AttributeError, ValueError, TypeError, EOFError, BrokenPipeError) as e:
+                    except (
+                        AttributeError,
+                        ValueError,
+                        TypeError,
+                        EOFError,
+                        BrokenPipeError,
+                    ) as e:
                         logger.debug("register_failed_temp failed: %s", e)
-                        with suppress(FileNotFoundError, PermissionError, OSError):
+                        with suppress(
+                            FileNotFoundError, PermissionError, OSError
+                        ):
                             os.remove(tmp_name)
                 else:
                     with suppress(FileNotFoundError, PermissionError, OSError):

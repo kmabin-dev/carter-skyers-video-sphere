@@ -1,4 +1,3 @@
-
 import multiprocessing
 
 import config
@@ -12,10 +11,10 @@ def test_init():
     assert sh.qsize() == 0
     # Fill up to capacity
     for i in range(config.SHARED_BUFFER_SIZE):
-        assert sh.put_shard(f'fan{i}', f'/tmp/dummy_{i}.mp4', timeout=0.1)
+        assert sh.put_shard(f"fan{i}", f"/tmp/dummy_{i}.mp4", timeout=0.1)
     assert sh.qsize() == config.SHARED_BUFFER_SIZE
     # Next put should fail quickly due to capacity
-    assert not sh.put_shard('fanX', '/tmp/overflow.mp4', timeout=0.1)
+    assert not sh.put_shard("fanX", "/tmp/overflow.mp4", timeout=0.1)
 
 
 def test_str():

@@ -37,14 +37,16 @@ def main():
         # logger.debug(f'fan={f}')
         # create a sub-process that calls the target with args
         fan_process = multiprocessing.Process(
-            target=f.start, args=([shared_buffer]))
+            target=f.start, args=([shared_buffer])
+        )
         # make the chef to start to prepare the food
         fan_process.start()
         # add the chef to a list, so that later we can join the chefs
         fans.append(fan_process)
 
     vj_process = multiprocessing.Process(
-        target=vj.start, args=([shared_buffer]))
+        target=vj.start, args=([shared_buffer])
+    )
     vj_process.start()
 
     # join all the fans and the vj
@@ -56,5 +58,5 @@ def main():
 
 
 # main should only execute for the main process
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
